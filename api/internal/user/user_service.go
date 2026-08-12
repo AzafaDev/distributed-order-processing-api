@@ -5,20 +5,25 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	ErrEmailRegistered = errors.New("email is already registered")
+	ErrLoginGeneric    = errors.New("invalid email or password")
 )
 
 type UserService struct {
 	repo Repository
+	jwt  *auth.JWTManager
 }
 
-func NewUserService(repo Repository) *UserService {
+func NewUserService(repo Repository, jwt *auth.JWTManager) *UserService {
 	return &UserService{
 		repo: repo,
+		jwt:  jwt,
 	}
 }
 
@@ -39,6 +44,34 @@ func (s *UserService) Register(ctx context.Context, req RegisterRequest) (*User,
 	}
 
 	return user, nil
+}
+
+func (s *UserService) Login(ctx context.Context, req LoginRequest) (string, error) {
+	existingUser, err := s.repo.GetUserByEmail(ctx, req.Email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrLoginGeneric
+		}
+		return "", err
+	}
+
+	if err := comparePassword(existingUser.PasswordHash, req.Password); err != nil {
+		return "", ErrLoginGeneric
+	}
+
+	signedToken, err := s.jwt.GenerateToken(existingUser.ID)
+	if err != nil {
+		return "", err
+	}
+
+	return signedToken, nil
+}
+
+func comparePassword(passwordHash, password string) error {
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func hashPassword(password string) (string, error) {

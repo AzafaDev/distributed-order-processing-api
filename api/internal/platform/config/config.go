@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	GoEnv       string
 	RedisHost   string
 	RedisPort   string
+	JwtExpiry   time.Duration
 }
 
 func Load() (*Config, error) {
@@ -31,6 +33,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("missing JWT_SECRET")
 	}
 
+	jwtExpiry, err := getEnvTimeDuration("JWT_EXPIRY")
+	if err != nil {
+		return nil, fmt.Errorf("JWT_EXPIRY is invalid format")
+	}
+
 	cfg := Config{
 		DatabaseURL: databaseUrl,
 		JwtSecret:   jwtSecret,
@@ -38,6 +45,7 @@ func Load() (*Config, error) {
 		GoEnv:       getEnv("GO_ENV", "development"),
 		RedisHost:   getEnv("REDIS_HOST", "localhost"),
 		RedisPort:   getEnv("REDIS_PORT", "6379"),
+		JwtExpiry:   jwtExpiry,
 	}
 
 	return &cfg, nil
@@ -49,4 +57,13 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return val
+}
+
+func getEnvTimeDuration(key string) (time.Duration, error) {
+	val := os.Getenv(key)
+	result, err := time.ParseDuration(val)
+	if err != nil {
+		return 0, err
+	}
+	return result, nil
 }

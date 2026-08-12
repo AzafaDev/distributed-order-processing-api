@@ -28,10 +28,11 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*Use
 		return nil, fmt.Errorf("error in get user by email: %w", err)
 	}
 	return &User{
-		ID:        user.ID.Bytes,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt.Time,
-		UpdatedAt: user.UpdatedAt.Time,
+		ID:           user.ID.Bytes,
+		Email:        user.Email,
+		CreatedAt:    user.CreatedAt.Time,
+		UpdatedAt:    user.UpdatedAt.Time,
+		PasswordHash: user.PasswordHash,
 	}, nil
 }
 func (r *UserRepository) CreateUser(ctx context.Context, email, passwordHash string) (*User, error) {
@@ -43,9 +44,10 @@ func (r *UserRepository) CreateUser(ctx context.Context, email, passwordHash str
 		return nil, fmt.Errorf("error in create user: %w", err)
 	}
 	return &User{
-		ID:        user.ID.Bytes,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt.Time,
-		UpdatedAt: user.UpdatedAt.Time,
+		ID:           user.ID.Bytes,
+		Email:        user.Email,
+		CreatedAt:    user.CreatedAt.Time,
+		UpdatedAt:    user.UpdatedAt.Time,
+		PasswordHash: user.PasswordHash,
 	}, nil
 }
