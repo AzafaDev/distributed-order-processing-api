@@ -3,15 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
@@ -41,8 +40,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/readyz", readyzHandler(dbPool))
-	mux.HandleFunc("/sleep", testingGraceful(log))
+	healthHandler := health.New(dbPool.Pool, rdb)
+
+	mux.HandleFunc("/readyz", healthHandler.ReadyZ)
+	mux.HandleFunc("/sleep", healthHandler.TestingGraceful)
+	mux.HandleFunc("/livez", healthHandler.LiveZ)
 
 	serv := http.Server{
 		Addr:    ":" + cfg.Port,
@@ -86,32 +88,4 @@ func main() {
 	rdb.Close()
 
 	log.Info("graceful shutdown successfully")
-}
-
-func readyzHandler(db *database.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-
-		if err := db.Ping(ctx); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			fmt.Fprintln(w, "database is not ready")
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "database is ready")
-	}
-}
-
-func testingGraceful(log *slog.Logger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "starting to sleep in 5 seconds")
-		time.Sleep(5 * time.Second)
-		fmt.Fprintln(w, "finished to sleep 5 seconds")
-	}
 }
