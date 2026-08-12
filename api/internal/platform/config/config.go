@@ -11,6 +11,7 @@ type Config struct {
 	DatabaseURL string
 	JwtSecret   string
 	Port        string
+	GoEnv       string
 }
 
 func Load() (*Config, error) {
@@ -32,6 +33,7 @@ func Load() (*Config, error) {
 		DatabaseURL: databaseUrl,
 		JwtSecret:   jwtSecret,
 		Port:        getEnv("PORT", "8080"),
+		GoEnv:       getEnv("GO_ENV", "development"),
 	}
 
 	return &cfg, nil

@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
 )
 
 func main() {
@@ -14,10 +14,12 @@ func main() {
 		log.Fatalf("error config: %v", err)
 	}
 
+	log := logger.New(cfg.GoEnv)
+
 	mux := http.NewServeMux()
-	
-	fmt.Printf("server is running at port: %s\n", cfg.Port)
+
+	log.Info("server is started", "port", cfg.Port)
 	if err := http.ListenAndServe(":"+cfg.Port, mux); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("failed to start server: %v", err)
+		log.Error("failed to start server", "error", err)
 	}
 }
