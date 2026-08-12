@@ -14,6 +14,9 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/server"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/user/sqlc"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -38,17 +41,22 @@ func main() {
 		Protocol: 3,
 	})
 
-	mux := http.NewServeMux()
-
 	healthHandler := health.New(dbPool.Pool, rdb)
 
-	mux.HandleFunc("/readyz", healthHandler.ReadyZ)
-	mux.HandleFunc("/sleep", healthHandler.TestingGraceful)
-	mux.HandleFunc("/livez", healthHandler.LiveZ)
+	queries := sqlc.New(dbPool.Pool)
+
+	userRepository := user.NewUserRepository(queries)
+	userService := user.NewUserService(userRepository)
+	userHandler := user.NewUserHandler(userService)
+
+	router := server.NewRouter(server.Handler{
+		User:   userHandler,
+		Health: healthHandler,
+	})
 
 	serv := http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: mux,
+		Handler: router,
 	}
 
 	serverErr := make(chan error, 1)

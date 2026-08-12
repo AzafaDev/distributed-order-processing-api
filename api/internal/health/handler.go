@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -24,6 +25,12 @@ func New(db *pgxpool.Pool, rdb *redis.Client) *Handler {
 		db:  db,
 		rdb: rdb,
 	}
+}
+
+func (h *Handler) RegisterRoutes(r chi.Router) {
+	r.Get("/livez", h.LiveZ)
+	r.Get("/readyz", h.ReadyZ)
+	r.Get("/sleep", h.TestingGraceful)
 }
 
 func (h *Handler) LiveZ(w http.ResponseWriter, r *http.Request) {
