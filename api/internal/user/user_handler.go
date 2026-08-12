@@ -3,10 +3,13 @@ package user
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/httpx"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator"
 )
@@ -15,13 +18,15 @@ type UserHandler struct {
 	srv      *UserService
 	validate *validator.Validate
 	log      *slog.Logger
+	jwt      *auth.JWTManager
 }
 
-func NewUserHandler(srv *UserService, log *slog.Logger) *UserHandler {
+func NewUserHandler(srv *UserService, log *slog.Logger, jwt *auth.JWTManager) *UserHandler {
 	return &UserHandler{
 		srv:      srv,
 		validate: validator.New(),
 		log:      log,
+		jwt:      jwt,
 	}
 }
 
@@ -29,6 +34,11 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/users", func(r chi.Router) {
 		r.Post("/register", h.Register)
 		r.Post("/login", h.Login)
+
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.Auth(h.jwt, h.log))
+			r.Get("/me", h.Me)
+		})
 	})
 }
 
@@ -88,4 +98,14 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"token": signedToken})
+}
+
+func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserIDClaims(r.Context())
+	if err != nil {
+		h.log.Error("Me", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+	fmt.Fprintln(w, userID)
 }
