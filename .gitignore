@@ -1,0 +1,22 @@
+# Go
+/api/bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Env
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Node (client)
+client/node_modules/
+client/dist/
+client/.env
