@@ -12,6 +12,8 @@ type Config struct {
 	JwtSecret   string
 	Port        string
 	GoEnv       string
+	RedisHost   string
+	RedisPort   string
 }
 
 func Load() (*Config, error) {
@@ -34,6 +36,8 @@ func Load() (*Config, error) {
 		JwtSecret:   jwtSecret,
 		Port:        getEnv("PORT", "8080"),
 		GoEnv:       getEnv("GO_ENV", "development"),
+		RedisHost:   getEnv("REDIS_HOST", "localhost"),
+		RedisPort:   getEnv("REDIS_PORT", "6379"),
 	}
 
 	return &cfg, nil
