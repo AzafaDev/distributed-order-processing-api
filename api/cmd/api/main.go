@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
@@ -41,13 +42,15 @@ func main() {
 		Protocol: 3,
 	})
 
+	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtExpiry)
+
 	healthHandler := health.New(dbPool.Pool, rdb)
 
 	queries := sqlc.New(dbPool.Pool)
 
 	userRepository := user.NewUserRepository(queries)
-	userService := user.NewUserService(userRepository)
-	userHandler := user.NewUserHandler(userService)
+	userService := user.NewUserService(userRepository, jwtManager)
+	userHandler := user.NewUserHandler(userService, log)
 
 	router := server.NewRouter(server.Handler{
 		User:   userHandler,
