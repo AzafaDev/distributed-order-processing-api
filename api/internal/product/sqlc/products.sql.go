@@ -11,6 +11,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createProduct = `-- name: CreateProduct :one
+INSERT INTO products (
+    name,
+    description,
+    price,
+    stock
+) VALUES ($1, $2, $3, $4)
+RETURNING id, name, description, price, stock, created_at, updated_at
+`
+
+type CreateProductParams struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Price       pgtype.Numeric `json:"price"`
+	Stock       int32          `json:"stock"`
+}
+
+func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
+	row := q.db.QueryRow(ctx, createProduct,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.Stock,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.Stock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteProductByID = `-- name: DeleteProductByID :execrows
+DELETE FROM products
+WHERE id = $1
+`
+
+func (q *Queries) DeleteProductByID(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProductByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getProductByID = `-- name: GetProductByID :one
 SELECT id, name, description, price, stock, created_at, updated_at
 FROM products
@@ -19,6 +69,26 @@ WHERE id = $1
 
 func (q *Queries) GetProductByID(ctx context.Context, id pgtype.UUID) (Product, error) {
 	row := q.db.QueryRow(ctx, getProductByID, id)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.Stock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProductByName = `-- name: GetProductByName :one
+SELECT id, name, description, price, stock, created_at, updated_at FROM products
+WHERE name = $1
+`
+
+func (q *Queries) GetProductByName(ctx context.Context, name string) (Product, error) {
+	row := q.db.QueryRow(ctx, getProductByName, name)
 	var i Product
 	err := row.Scan(
 		&i.ID,
@@ -69,4 +139,44 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]P
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateProduct = `-- name: UpdateProduct :one
+UPDATE products
+SET name = COALESCE($1, name),
+    description = COALESCE($2, description),
+    price = COALESCE($3, price),
+    stock = COALESCE($4, stock),
+    updated_at = now()
+WHERE id = $5
+RETURNING id, name, description, price, stock, created_at, updated_at
+`
+
+type UpdateProductParams struct {
+	Name        pgtype.Text    `json:"name"`
+	Description pgtype.Text    `json:"description"`
+	Price       pgtype.Numeric `json:"price"`
+	Stock       pgtype.Int4    `json:"stock"`
+	ID          pgtype.UUID    `json:"id"`
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateProduct,
+		arg.Name,
+		arg.Description,
+		arg.Price,
+		arg.Stock,
+		arg.ID,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.Price,
+		&i.Stock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
