@@ -50,7 +50,7 @@ func main() {
 
 	userRepository := user.NewUserRepository(queries)
 	userService := user.NewUserService(userRepository, jwtManager)
-	userHandler := user.NewUserHandler(userService, log)
+	userHandler := user.NewUserHandler(userService, log, jwtManager)
 
 	router := server.NewRouter(server.Handler{
 		User:   userHandler,
