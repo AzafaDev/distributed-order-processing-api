@@ -15,9 +15,11 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
+	productSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/server"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/user/sqlc"
+	userSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/user/sqlc"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -46,15 +48,20 @@ func main() {
 
 	healthHandler := health.New(dbPool.Pool, rdb)
 
-	queries := sqlc.New(dbPool.Pool)
-
-	userRepository := user.NewUserRepository(queries)
+	userQueries := userSqlc.New(dbPool.Pool)
+	userRepository := user.NewUserRepository(userQueries)
 	userService := user.NewUserService(userRepository, jwtManager)
 	userHandler := user.NewUserHandler(userService, log, jwtManager)
 
+	productQueries := productSqlc.New(dbPool.Pool)
+	productRepository := product.NewProductRepository(productQueries)
+	productService := product.NewProductService(productRepository)
+	productHandler := product.NewProductHandler(productService, log)
+
 	router := server.NewRouter(server.Handler{
-		User:   userHandler,
-		Health: healthHandler,
+		User:    userHandler,
+		Health:  healthHandler,
+		Product: productHandler,
 	})
 
 	serv := http.Server{

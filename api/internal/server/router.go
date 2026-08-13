@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
 	"github.com/go-chi/chi/v5"
 )
@@ -11,6 +12,7 @@ import (
 type Handler struct {
 	Health *health.Handler
 	User   *user.UserHandler
+	Product *product.ProductHandler
 }
 
 func NewRouter(h Handler) http.Handler {
@@ -20,6 +22,7 @@ func NewRouter(h Handler) http.Handler {
 		r.Group(func(r chi.Router) {
 			h.User.RegisterRoutes(r)
 			h.Health.RegisterRoutes(r)
+			h.Product.RegisterRoutes(r)
 		})
 	})
 
