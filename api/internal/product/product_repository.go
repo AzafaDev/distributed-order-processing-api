@@ -2,15 +2,22 @@ package product
 
 import (
 	"context"
+	"errors"
+	"math/big"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Repository interface {
 	GetProductByID(ctx context.Context, id uuid.UUID) (*Product, error)
 	ListProducts(ctx context.Context, limit, offset int) ([]Product, error)
+	CreateProduct(ctx context.Context, name, desc string, price, stock int) (*Product, error)
+	UpdateProduct(ctx context.Context, id uuid.UUID, name, desc *string, price, stock *int) (*Product, error)
+	DeleteProductByID(ctx context.Context, id uuid.UUID) (int, error)
 }
 
 type ProductRepository struct {
@@ -76,4 +83,108 @@ func (r *ProductRepository) ListProducts(ctx context.Context, limit, offset int)
 		products = append(products, product)
 	}
 	return products, nil
+}
+
+func (r *ProductRepository) CreateProduct(ctx context.Context, name, desc string, price, stock int) (*Product, error) {
+	createdProduct, err := r.queries.CreateProduct(ctx, sqlc.CreateProductParams{
+		Name:        name,
+		Description: desc,
+		Price: pgtype.Numeric{
+			Int:   big.NewInt(int64(price)),
+			Valid: true,
+		},
+		Stock: int32(stock),
+	})
+
+	var pgErr *pgconn.PgError
+
+	if err != nil {
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			return nil, ErrExistingProductName
+		}
+		return nil, err
+	}
+
+	convertedPrice, err := createdProduct.Price.Int64Value()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Product{
+		ID:          createdProduct.ID.Bytes,
+		Name:        createdProduct.Name,
+		Description: createdProduct.Description,
+		Price:       int(convertedPrice.Int64),
+		Stock:       int(createdProduct.Stock),
+		CreatedAt:   createdProduct.CreatedAt.Time,
+		UpdatedAt:   createdProduct.UpdatedAt.Time,
+	}, nil
+}
+
+func (r *ProductRepository) UpdateProduct(ctx context.Context, id uuid.UUID, name, desc *string, price, stock *int) (*Product, error) {
+	nameParam := pgtype.Text{}
+	if name != nil {
+		nameParam = pgtype.Text{String: *name, Valid: true}
+	}
+
+	descParam := pgtype.Text{}
+	if desc != nil {
+		descParam = pgtype.Text{String: *desc, Valid: true}
+	}
+
+	priceParam := pgtype.Numeric{}
+	if price != nil {
+		priceParam = pgtype.Numeric{Int: big.NewInt(int64(*price)), Valid: true}
+	}
+
+	stockParam := pgtype.Int4{}
+	if stock != nil {
+		stockParam = pgtype.Int4{Int32: int32(*stock), Valid: true}
+	}
+
+	updatedProduct, err := r.queries.UpdateProduct(ctx, sqlc.UpdateProductParams{
+		Name:        nameParam,
+		Description: descParam,
+		Price:       priceParam,
+		Stock:       stockParam,
+		ID: pgtype.UUID{
+			Bytes: id,
+			Valid: true,
+		},
+	})
+
+	var pgErr *pgconn.PgError
+	if err != nil {
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			return nil, ErrExistingProductName
+		}
+		return nil, err
+	}
+
+	convertedPrice, err := updatedProduct.Price.Int64Value()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Product{
+		ID:          updatedProduct.ID.Bytes,
+		Name:        updatedProduct.Name,
+		Description: updatedProduct.Description,
+		Price:       int(convertedPrice.Int64),
+		Stock:       int(updatedProduct.Stock),
+		CreatedAt:   updatedProduct.CreatedAt.Time,
+		UpdatedAt:   updatedProduct.UpdatedAt.Time,
+	}, nil
+
+}
+
+func (r *ProductRepository) DeleteProductByID(ctx context.Context, id uuid.UUID) (int, error) {
+	effectedRows, err := r.queries.DeleteProductByID(ctx, pgtype.UUID{
+		Bytes: id,
+		Valid: true,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int(effectedRows), nil
 }
