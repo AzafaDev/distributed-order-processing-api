@@ -12,6 +12,7 @@ var (
 	ErrNoProduct           = errors.New("no products available")
 	ErrExistingProductName = errors.New("product's name cannot be same with the exists one")
 	ErrProductNotFound     = errors.New("product not found")
+	ErrInsufficientStock   = errors.New("insufficient stock")
 )
 
 type ProductService struct {
@@ -74,8 +75,6 @@ func (s *ProductService) CreateProduct(ctx context.Context, req CreateProductReq
 func (s *ProductService) UpdateProduct(ctx context.Context, id uuid.UUID, req UpdateProductRequest) (*Product, error) {
 	updatedProduct, err := s.repo.UpdateProduct(ctx, id, req.Name, req.Description, req.Price, req.Stock)
 	if err != nil {
-		// UPDATE ... WHERE id = $5 pakai sqlc :one, jadi kalau id gak match row manapun
-		// pgx bakal balikin ErrNoRows (bukan "0 rows affected" kayak DELETE)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrProductNotFound
 		}

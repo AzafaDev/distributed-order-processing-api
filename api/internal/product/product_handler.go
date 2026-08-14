@@ -37,7 +37,6 @@ func (h *ProductHandler) RegisterRoutes(r chi.Router) {
 	})
 }
 
-// parseProductID ambil & validasi path param {id} - dipakai di semua handler yang butuh single product
 func parseProductID(r *http.Request) (uuid.UUID, error) {
 	return uuid.Parse(chi.URLParam(r, "id"))
 }
