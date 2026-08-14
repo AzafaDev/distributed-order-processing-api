@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/idempotency"
+	idempotencySqlc "github.com/AzafaDev/distributed-order-processing-api/internal/idempotency/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/order"
 	orderSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/order/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
@@ -50,6 +52,10 @@ func main() {
 
 	healthHandler := health.New(dbPool.Pool, rdb)
 
+	idempotencyQueries := idempotencySqlc.New(dbPool.Pool)
+	idempotencyRepository := idempotency.NewIdempotencyRepository(idempotencyQueries)
+	idempotencyService := idempotency.NewIdempotencyService(idempotencyRepository)
+
 	userQueries := userSqlc.New(dbPool.Pool)
 	userRepository := user.NewUserRepository(userQueries)
 	userService := user.NewUserService(userRepository, jwtManager)
@@ -63,7 +69,7 @@ func main() {
 	orderQueries := orderSqlc.New(dbPool.Pool)
 	orderRepository := order.NewOrderRepository(orderQueries, dbPool.Pool)
 	orderService := order.NewOrderService(orderRepository)
-	orderHandler := order.NewOrderHandler(orderService, log, jwtManager)
+	orderHandler := order.NewOrderHandler(orderService, log, jwtManager, idempotencyService)
 
 	router := server.NewRouter(server.Handler{
 		User:    userHandler,
