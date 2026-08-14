@@ -55,7 +55,9 @@ func IdempotencyMiddleware(s *idempotency.IdempotencyService, log *slog.Logger) 
 
 			switch idempotencyResult.Status {
 			case idempotency.Replayed:
-				httpx.WriteJSON(w, http.StatusCreated, idempotencyResult.Response)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				w.Write(idempotencyResult.Response)
 				return
 			case idempotency.Mismatch:
 				httpx.WriteErrorJSON(w, http.StatusConflict, "idempotency key already used with a different request body")
