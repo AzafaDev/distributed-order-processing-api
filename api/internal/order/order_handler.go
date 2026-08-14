@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/AzafaDev/distributed-order-processing-api/internal/idempotency"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/httpx"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/middleware"
@@ -20,14 +21,16 @@ type OrderHandler struct {
 	log *slog.Logger
 	v   *validator.Validate
 	jw  *auth.JWTManager
+	is  *idempotency.IdempotencyService
 }
 
-func NewOrderHandler(s *OrderService, log *slog.Logger, jw *auth.JWTManager) *OrderHandler {
+func NewOrderHandler(s *OrderService, log *slog.Logger, jw *auth.JWTManager, is *idempotency.IdempotencyService) *OrderHandler {
 	return &OrderHandler{
 		s:   s,
 		log: log,
 		v:   validator.New(),
 		jw:  jw,
+		is:  is,
 	}
 }
 
@@ -36,8 +39,8 @@ func (h *OrderHandler) RegisterRoutes(r chi.Router) {
 		r.Use(middleware.Auth(h.jw, h.log))
 		r.Get("/", h.GetOrders)
 		r.Get("/{id}", h.GetOrderByID)
-		r.Post("/", h.CreateOrder)
 		r.Post("/{id}/cancel", h.CancelOrder)
+		r.With(middleware.IdempotencyMiddleware(h.is, h.log)).Post("/", h.CreateOrder)
 	})
 }
 
@@ -59,6 +62,13 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.log.Error("create order", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	idempotencyVal, err := middleware.GetIdempotencyValueFromContext(r.Context())
+	if err != nil {
+		h.log.Error("create order", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
 		return
 	}
 
@@ -87,11 +97,21 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusCreated, CreateOrderResponse{
+	resp := CreateOrderResponse{
 		Order:   *createdOrder,
 		Items:   createdOrderItems,
 		Payment: *createdPayment,
-	})
+	}
+
+	envelope := httpx.ResponseJson{Success: true, Data: resp}
+	respJSON, err := json.Marshal(envelope)
+	if err != nil {
+		h.log.Error("create order: marshal response for idempotency", "error", err)
+	} else if err := h.is.SaveResponse(r.Context(), idempotencyVal, userID, respJSON); err != nil {
+		h.log.Error("create order: save idempotency response", "error", err)
+	}
+
+	httpx.WriteJSON(w, http.StatusCreated, resp)
 }
 
 func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
