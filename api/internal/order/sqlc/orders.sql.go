@@ -138,6 +138,143 @@ func (q *Queries) DecreaseProductStock(ctx context.Context, arg DecreaseProductS
 	return result.RowsAffected(), nil
 }
 
+const getOrderByID = `-- name: GetOrderByID :one
+SELECT id, user_id, status, total_amount, created_at, updated_at FROM orders
+WHERE id = $1
+    AND user_id = $2
+`
+
+type GetOrderByIDParams struct {
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetOrderByID(ctx context.Context, arg GetOrderByIDParams) (Order, error) {
+	row := q.db.QueryRow(ctx, getOrderByID, arg.ID, arg.UserID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Status,
+		&i.TotalAmount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getOrderItemsByOrderID = `-- name: GetOrderItemsByOrderID :many
+SELECT id, order_id, product_id, quantity, price, subtotal, created_at, updated_at FROM order_items
+WHERE order_id = $1
+`
+
+func (q *Queries) GetOrderItemsByOrderID(ctx context.Context, orderID pgtype.UUID) ([]OrderItem, error) {
+	rows, err := q.db.Query(ctx, getOrderItemsByOrderID, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrderItem
+	for rows.Next() {
+		var i OrderItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.ProductID,
+			&i.Quantity,
+			&i.Price,
+			&i.Subtotal,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getOrders = `-- name: GetOrders :many
+SELECT id, user_id, status, total_amount, created_at, updated_at FROM orders
+WHERE user_id = $1
+`
+
+func (q *Queries) GetOrders(ctx context.Context, userID pgtype.UUID) ([]Order, error) {
+	rows, err := q.db.Query(ctx, getOrders, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Order
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Status,
+			&i.TotalAmount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const increaseProductStock = `-- name: IncreaseProductStock :execrows
+UPDATE products
+SET stock = stock + $1,
+    updated_at = now()
+WHERE id = $2
+`
+
+type IncreaseProductStockParams struct {
+	Stock int32       `json:"stock"`
+	ID    pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) IncreaseProductStock(ctx context.Context, arg IncreaseProductStockParams) (int64, error) {
+	result, err := q.db.Exec(ctx, increaseProductStock, arg.Stock, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const lockOrderForUpdate = `-- name: LockOrderForUpdate :one
+SELECT id, user_id, status, total_amount, created_at, updated_at FROM orders
+WHERE user_id = $1
+    AND id = $2
+FOR UPDATE
+`
+
+type LockOrderForUpdateParams struct {
+	UserID pgtype.UUID `json:"user_id"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) LockOrderForUpdate(ctx context.Context, arg LockOrderForUpdateParams) (Order, error) {
+	row := q.db.QueryRow(ctx, lockOrderForUpdate, arg.UserID, arg.ID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Status,
+		&i.TotalAmount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const lockProductForUpdate = `-- name: LockProductForUpdate :one
 SELECT id, name, description, price, stock, created_at, updated_at FROM products
 WHERE id = $1
@@ -153,6 +290,35 @@ func (q *Queries) LockProductForUpdate(ctx context.Context, id pgtype.UUID) (Pro
 		&i.Description,
 		&i.Price,
 		&i.Stock,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateOrderStatus = `-- name: UpdateOrderStatus :one
+UPDATE orders
+SET status = $1,
+    updated_at = now()
+WHERE id = $2
+    AND user_id = $3
+RETURNING id, user_id, status, total_amount, created_at, updated_at
+`
+
+type UpdateOrderStatusParams struct {
+	Status string      `json:"status"`
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error) {
+	row := q.db.QueryRow(ctx, updateOrderStatus, arg.Status, arg.ID, arg.UserID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Status,
+		&i.TotalAmount,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

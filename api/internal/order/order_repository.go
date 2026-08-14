@@ -18,11 +18,17 @@ import (
 )
 
 var (
-	ErrOrderNotFound = errors.New("order not found")
+	ErrOrderNotFound        = errors.New("order not found")
+	ErrOrderUnvailable      = errors.New("no order is available")
+	ErrOrderItemsUnvailable = errors.New("no order items is available")
+	ErrOrderNotPending      = errors.New("status order is not pending")
 )
 
 type Repository interface {
 	PlaceOrder(ctx context.Context, userID uuid.UUID, items []CreateOrderItemRequest) (*Order, []OrderItem, *Payment, error)
+	GetOrders(ctx context.Context, userID uuid.UUID) ([]Order, error)
+	GetOrderByID(ctx context.Context, userID, orderID uuid.UUID) (*Order, error)
+	CancelOrder(ctx context.Context, userID, orderID uuid.UUID) (*Order, error)
 }
 
 type OrderRepository struct {
@@ -184,4 +190,147 @@ func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, item
 	}
 
 	return &orderResponse, orderItemsResponse, &paymentResponse, nil
+}
+
+func (r *OrderRepository) GetOrders(ctx context.Context, userID uuid.UUID) ([]Order, error) {
+	var ordersReponse []Order
+
+	sqlcOrders, err := r.q.GetOrders(ctx, pgtype.UUID{
+		Bytes: userID,
+		Valid: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(sqlcOrders) == 0 {
+		return nil, ErrOrderUnvailable
+	}
+
+	for _, sqlcOrder := range sqlcOrders {
+		orderRes := Order{
+			ID:          sqlcOrder.ID.Bytes,
+			UserID:      userID,
+			Status:      sqlcOrder.Status,
+			TotalAmount: int(sqlcOrder.TotalAmount),
+			CreatedAt:   sqlcOrder.CreatedAt.Time,
+			UpdatedAt:   sqlcOrder.UpdatedAt.Time,
+		}
+		ordersReponse = append(ordersReponse, orderRes)
+	}
+
+	return ordersReponse, nil
+}
+
+func (r *OrderRepository) GetOrderByID(ctx context.Context, userID, orderID uuid.UUID) (*Order, error) {
+	sqlcOrder, err := r.q.GetOrderByID(ctx, sqlc.GetOrderByIDParams{
+		UserID: pgtype.UUID{
+			Bytes: userID,
+			Valid: true,
+		},
+		ID: pgtype.UUID{
+			Bytes: orderID,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrOrderNotFound
+		}
+		return nil, err
+	}
+
+	return &Order{
+		ID:          sqlcOrder.ID.Bytes,
+		UserID:      sqlcOrder.UserID.Bytes,
+		Status:      sqlcOrder.Status,
+		TotalAmount: int(sqlcOrder.TotalAmount),
+		CreatedAt:   sqlcOrder.CreatedAt.Time,
+		UpdatedAt:   sqlcOrder.UpdatedAt.Time,
+	}, nil
+}
+
+func (r *OrderRepository) CancelOrder(ctx context.Context, userID, orderID uuid.UUID) (*Order, error) {
+	tx, err := r.p.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := r.q.WithTx(tx)
+
+	sqlcOrder, err := qtx.LockOrderForUpdate(ctx, sqlc.LockOrderForUpdateParams{
+		UserID: pgtype.UUID{
+			Bytes: userID,
+			Valid: true,
+		},
+		ID: pgtype.UUID{
+			Bytes: orderID,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrOrderNotFound
+		}
+		return nil, err
+	}
+
+	if sqlcOrder.Status != "pending" {
+		return nil, ErrOrderNotPending
+	}
+
+	sqlcOrderItems, err := qtx.GetOrderItemsByOrderID(ctx, sqlcOrder.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(sqlcOrderItems) == 0 {
+		return nil, ErrOrderItemsUnvailable
+	}
+
+	sort.Slice(sqlcOrderItems, func(i, j int) bool {
+		return bytes.Compare(sqlcOrderItems[i].ProductID.Bytes[:], sqlcOrderItems[j].ProductID.Bytes[:]) < 0
+	})
+
+	for _, sqlcOrderItem := range sqlcOrderItems {
+		sqlcProduct, err := qtx.LockProductForUpdate(ctx, sqlcOrderItem.ProductID)
+		if err != nil {
+			return nil, err
+		}
+
+		affectedRows, err := qtx.IncreaseProductStock(ctx, sqlc.IncreaseProductStockParams{
+			Stock: sqlcOrderItem.Quantity,
+			ID:    sqlcProduct.ID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if affectedRows == 0 {
+			return nil, product.ErrInsufficientStock
+		}
+	}
+
+	updatedOrder, err := qtx.UpdateOrderStatus(ctx, sqlc.UpdateOrderStatusParams{
+		Status: "cancelled",
+		ID:     sqlcOrder.ID,
+		UserID: sqlcOrder.UserID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrOrderNotFound
+		}
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return &Order{
+		ID:          updatedOrder.ID.Bytes,
+		UserID:      userID,
+		Status:      updatedOrder.Status,
+		TotalAmount: int(updatedOrder.TotalAmount),
+		CreatedAt:   updatedOrder.CreatedAt.Time,
+		UpdatedAt:   updatedOrder.UpdatedAt.Time,
+	}, nil
 }

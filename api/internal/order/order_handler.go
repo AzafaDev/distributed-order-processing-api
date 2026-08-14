@@ -12,6 +12,7 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator"
+	"github.com/google/uuid"
 )
 
 type OrderHandler struct {
@@ -33,7 +34,10 @@ func NewOrderHandler(s *OrderService, log *slog.Logger, jw *auth.JWTManager) *Or
 func (h *OrderHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/orders", func(r chi.Router) {
 		r.Use(middleware.Auth(h.jw, h.log))
+		r.Get("/", h.GetOrders)
+		r.Get("/{id}", h.GetOrderByID)
 		r.Post("/", h.CreateOrder)
+		r.Post("/{id}/cancel", h.CancelOrder)
 	})
 }
 
@@ -88,4 +92,107 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Items:   createdOrderItems,
 		Payment: *createdPayment,
 	})
+}
+
+func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
+	userID, err := middleware.GetUserIDClaims(r.Context())
+	if err != nil {
+		h.log.Error("get orders", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	orders, err := h.s.GetOrders(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, ErrOrderUnvailable) {
+			h.log.Error("get orders", "error", err)
+			httpx.WriteJSON(w, http.StatusOK, []Order{})
+			return
+		}
+		h.log.Error("get orders", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, orders)
+}
+
+func (h *OrderHandler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
+	orderIDStr := chi.URLParam(r, "id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		h.log.Error("get order by id", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
+		return
+	}
+
+	userID, err := middleware.GetUserIDClaims(r.Context())
+	if err != nil {
+		h.log.Error("get order by id", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	order, err := h.s.GetOrderByID(r.Context(), userID, orderID)
+	if err != nil {
+		if errors.Is(err, ErrOrderNotFound) {
+			h.log.Error("get order by id", "error", err)
+			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
+			return
+		}
+		h.log.Error("get order by id", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, order)
+}
+
+func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
+	orderIDStr := chi.URLParam(r, "id")
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		h.log.Error("cancel order", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
+		return
+	}
+
+	userID, err := middleware.GetUserIDClaims(r.Context())
+	if err != nil {
+		h.log.Error("cancel order", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	cancelledOrder, err := h.s.CancelOrder(r.Context(), userID, orderID)
+	if err != nil {
+		if errors.Is(err, ErrOrderNotFound) {
+			h.log.Error("cancel order", "error", err)
+			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
+			return
+		}
+
+		if errors.Is(err, ErrOrderNotPending) {
+			h.log.Error("cancel order", "error", err)
+			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
+			return
+		}
+
+		if errors.Is(err, ErrOrderItemsUnvailable) {
+			h.log.Error("cancel order", "error", err)
+			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
+			return
+		}
+
+		if errors.Is(err, product.ErrInsufficientStock) {
+			h.log.Error("cancel order", "error", err)
+			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
+			return
+		}
+
+		h.log.Error("cancel order", "error", err)
+		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, cancelledOrder)
+
 }
