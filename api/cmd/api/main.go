@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/order"
+	orderSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/order/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
@@ -58,10 +60,16 @@ func main() {
 	productService := product.NewProductService(productRepository)
 	productHandler := product.NewProductHandler(productService, log)
 
+	orderQueries := orderSqlc.New(dbPool.Pool)
+	orderRepository := order.NewOrderRepository(orderQueries, dbPool.Pool)
+	orderService := order.NewOrderService(orderRepository)
+	orderHandler := order.NewOrderHandler(orderService, log, jwtManager)
+
 	router := server.NewRouter(server.Handler{
 		User:    userHandler,
 		Health:  healthHandler,
 		Product: productHandler,
+		Order:   orderHandler,
 	})
 
 	serv := http.Server{

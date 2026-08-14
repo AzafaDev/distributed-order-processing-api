@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS order_items(
     quantity INT NOT NULL CHECK (quantity > 0),
     price BIGINT NOT NULL CHECK (price >= 0),
     subtotal BIGINT NOT NULL CHECK (subtotal >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT fk_order_items_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
     CONSTRAINT fk_order_items_product_id FOREIGN KEY(product_id) REFERENCES products(id)
