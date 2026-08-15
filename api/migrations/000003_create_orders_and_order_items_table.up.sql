@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
     status TEXT NOT NULL CHECK (
-        status IN ('pending', 'paid', 'cancelled', 'completed')
+        status IN ('pending', 'paid', 'cancelled')
     ) DEFAULT 'pending',
     total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
