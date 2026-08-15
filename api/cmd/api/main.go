@@ -15,6 +15,8 @@ import (
 	idempotencySqlc "github.com/AzafaDev/distributed-order-processing-api/internal/idempotency/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/order"
 	orderSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/order/sqlc"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/payment"
+	paymentSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/payment/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
@@ -71,11 +73,17 @@ func main() {
 	orderService := order.NewOrderService(orderRepository)
 	orderHandler := order.NewOrderHandler(orderService, log, jwtManager, idempotencyService)
 
+	paymentQueries := paymentSqlc.New(dbPool.Pool)
+	paymentRepository := payment.NewPaymentRepository(paymentQueries, dbPool.Pool)
+	paymentService := payment.NewPaymentService(paymentRepository)
+	paymentHandler := payment.NewPaymentHandler(paymentService, jwtManager, log)
+
 	router := server.NewRouter(server.Handler{
 		User:    userHandler,
 		Health:  healthHandler,
 		Product: productHandler,
 		Order:   orderHandler,
+		Payment: paymentHandler,
 	})
 
 	serv := http.Server{
