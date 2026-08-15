@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/idempotency/sqlc"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ type Repository interface {
 	CreateIdempotency(ctx context.Context, key, requestHash string, userID uuid.UUID) (*IdempotencyKey, error)
 	GetIdempotencyByUserID(ctx context.Context, key string, userID uuid.UUID) (*IdempotencyKey, error)
 	UpdateIdempotency(ctx context.Context, key string, userID uuid.UUID, response json.RawMessage) (*IdempotencyKey, error)
+	ReclaimStaleIdempotency(ctx context.Context, key, requestHash string, userID uuid.UUID, staleAfter time.Duration) (*IdempotencyKey, error)
 }
 
 type IdempotencyRepository struct {
@@ -77,6 +79,33 @@ func (r *IdempotencyRepository) GetIdempotencyByUserID(ctx context.Context, key 
 		Key:         sqlcIdempotencyKey.Key,
 		UserID:      userID,
 		RequestHash: sqlcIdempotencyKey.RequestHash,
+		Response:    sqlcIdempotencyKey.Response,
+		CreatedAt:   sqlcIdempotencyKey.CreatedAt.Time,
+		UpdatedAt:   sqlcIdempotencyKey.UpdatedAt.Time,
+	}, nil
+}
+
+func (r *IdempotencyRepository) ReclaimStaleIdempotency(ctx context.Context, key, requestHash string, userID uuid.UUID, staleAfter time.Duration) (*IdempotencyKey, error) {
+	sqlcIdempotencyKey, err := r.q.ReclaimStaleIdempotency(ctx, sqlc.ReclaimStaleIdempotencyParams{
+		RequestHash: requestHash,
+		Key:         key,
+		UserID: pgtype.UUID{
+			Bytes: userID,
+			Valid: true,
+		},
+		CreatedAt: pgtype.Timestamptz{Time: time.Now().Add(-staleAfter), Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNoIdempotencyFound
+		}
+		return nil, err
+	}
+
+	return &IdempotencyKey{
+		Key:         sqlcIdempotencyKey.Key,
+		UserID:      userID,
+		RequestHash: requestHash,
 		Response:    sqlcIdempotencyKey.Response,
 		CreatedAt:   sqlcIdempotencyKey.CreatedAt.Time,
 		UpdatedAt:   sqlcIdempotencyKey.UpdatedAt.Time,
