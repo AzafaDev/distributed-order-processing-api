@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const staleClaimTimeout = 30 * time.Second
 
 type IdempotencyService struct {
 	r Repository
@@ -41,8 +44,19 @@ func (s *IdempotencyService) CheckAndClaim(ctx context.Context, key, requestHash
 		}
 
 		if len(existingIdempotencyKey.Response) == 0 {
+			_, reclaimErr := s.r.ReclaimStaleIdempotency(ctx, key, requestHash, userID, staleClaimTimeout)
+			if reclaimErr != nil {
+				if errors.Is(reclaimErr, ErrNoIdempotencyFound) {
+					return &IdempotencyResult{
+						Status:   InProgress,
+						Response: nil,
+					}, nil
+				}
+				return nil, reclaimErr
+			}
+
 			return &IdempotencyResult{
-				Status:   InProgress,
+				Status:   New,
 				Response: nil,
 			}, nil
 		}

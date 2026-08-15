@@ -19,3 +19,14 @@ SET response = $1,
 WHERE key = $2
     AND user_id = $3
 RETURNING *;
+
+-- name: ReclaimStaleIdempotency :one
+UPDATE idempotency_keys
+SET request_hash = $1,
+    created_at = now(),
+    updated_at = now()
+WHERE key = $2
+    AND user_id = $3
+    AND response IS NULL
+    AND created_at < $4
+RETURNING *;

@@ -66,6 +66,44 @@ func (q *Queries) GetIdempotencyByUserID(ctx context.Context, arg GetIdempotency
 	return i, err
 }
 
+const reclaimStaleIdempotency = `-- name: ReclaimStaleIdempotency :one
+UPDATE idempotency_keys
+SET request_hash = $1,
+    created_at = now(),
+    updated_at = now()
+WHERE key = $2
+    AND user_id = $3
+    AND response IS NULL
+    AND created_at < $4
+RETURNING key, user_id, request_hash, response, created_at, updated_at
+`
+
+type ReclaimStaleIdempotencyParams struct {
+	RequestHash string             `json:"request_hash"`
+	Key         string             `json:"key"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) ReclaimStaleIdempotency(ctx context.Context, arg ReclaimStaleIdempotencyParams) (IdempotencyKey, error) {
+	row := q.db.QueryRow(ctx, reclaimStaleIdempotency,
+		arg.RequestHash,
+		arg.Key,
+		arg.UserID,
+		arg.CreatedAt,
+	)
+	var i IdempotencyKey
+	err := row.Scan(
+		&i.Key,
+		&i.UserID,
+		&i.RequestHash,
+		&i.Response,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateIdempotency = `-- name: UpdateIdempotency :one
 UPDATE idempotency_keys
 SET response = $1,
