@@ -1,0 +1,14 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+      - name: Unit tests
+        run: cd api && go test ./...
+      - name: Integration tests
+        run: cd api && go test -tags=integration ./test/integration/... -v
