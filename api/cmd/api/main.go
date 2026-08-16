@@ -10,23 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/idempotency"
-	idempotencySqlc "github.com/AzafaDev/distributed-order-processing-api/internal/idempotency/sqlc"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/order"
-	orderSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/order/sqlc"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/payment"
-	paymentSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/payment/sqlc"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
-	productSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/server"
-	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
-	userSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/user/sqlc"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -38,57 +24,15 @@ func main() {
 
 	ctx := context.Background()
 
-	dbPool, err := database.New(ctx, cfg.DatabaseURL)
+	app, err := server.BuildApp(ctx, cfg, log)
 	if err != nil {
-		log.Error("failed to connect DB", "error", err)
+		log.Error("failed to build app", "error", err)
 		os.Exit(1)
 	}
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisHost + ":" + cfg.RedisPort,
-		Password: "",
-		Protocol: 3,
-	})
-
-	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtExpiry)
-
-	healthHandler := health.New(dbPool.Pool, rdb)
-
-	idempotencyQueries := idempotencySqlc.New(dbPool.Pool)
-	idempotencyRepository := idempotency.NewIdempotencyRepository(idempotencyQueries)
-	idempotencyService := idempotency.NewIdempotencyService(idempotencyRepository)
-
-	userQueries := userSqlc.New(dbPool.Pool)
-	userRepository := user.NewUserRepository(userQueries)
-	userService := user.NewUserService(userRepository, jwtManager)
-	userHandler := user.NewUserHandler(userService, log, jwtManager)
-
-	productQueries := productSqlc.New(dbPool.Pool)
-	productRepository := product.NewProductRepository(productQueries)
-	productService := product.NewProductService(productRepository)
-	productHandler := product.NewProductHandler(productService, log)
-
-	orderQueries := orderSqlc.New(dbPool.Pool)
-	orderRepository := order.NewOrderRepository(orderQueries, dbPool.Pool)
-	orderService := order.NewOrderService(orderRepository)
-	orderHandler := order.NewOrderHandler(orderService, log, jwtManager, idempotencyService)
-
-	paymentQueries := paymentSqlc.New(dbPool.Pool)
-	paymentRepository := payment.NewPaymentRepository(paymentQueries, dbPool.Pool)
-	paymentService := payment.NewPaymentService(paymentRepository)
-	paymentHandler := payment.NewPaymentHandler(paymentService, jwtManager, log)
-
-	router := server.NewRouter(server.Handler{
-		User:    userHandler,
-		Health:  healthHandler,
-		Product: productHandler,
-		Order:   orderHandler,
-		Payment: paymentHandler,
-	})
-
 	serv := http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: router,
+		Handler: app.Router,
 	}
 
 	serverErr := make(chan error, 1)
@@ -122,10 +66,10 @@ func main() {
 	}
 
 	log.Info("closing database gracefully")
-	dbPool.Close()
+	app.DB.Close()
 
 	log.Info("closing redis connection gracefully")
-	rdb.Close()
+	app.Redis.Close()
 
 	log.Info("graceful shutdown successfully")
 }
