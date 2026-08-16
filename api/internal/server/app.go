@@ -15,6 +15,7 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/ratelimit"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	productSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
@@ -39,10 +40,11 @@ func BuildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 		Password: "",
 		Protocol: 3,
 	})
+	loginRateLimiter := ratelimit.New(rdb, cfg.LoginRateLimit, cfg.LoginRateWindow)
 
 	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtExpiry)
 
-	healthHandler := health.New(dbPool.Pool, rdb)
+	healthHandler := health.New(dbPool.Pool, rdb, log)
 
 	idempotencyQueries := idempotencySqlc.New(dbPool.Pool)
 	idempotencyRepository := idempotency.NewIdempotencyRepository(idempotencyQueries)
@@ -51,7 +53,7 @@ func BuildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 	userQueries := userSqlc.New(dbPool.Pool)
 	userRepository := user.NewUserRepository(userQueries)
 	userService := user.NewUserService(userRepository, jwtManager)
-	userHandler := user.NewUserHandler(userService, log, jwtManager)
+	userHandler := user.NewUserHandler(userService, log, jwtManager, loginRateLimiter)
 
 	productQueries := productSqlc.New(dbPool.Pool)
 	productRepository := product.NewProductRepository(productQueries)

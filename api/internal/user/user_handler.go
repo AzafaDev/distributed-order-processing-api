@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,30 +11,39 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/httpx"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/middleware"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/ratelimit"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator"
 )
+
+type LoginLimiter interface {
+	Allow(ctx context.Context, key string) (bool, error)
+	RecordFailure(ctx context.Context, key string) (int64, error)
+	Reset(ctx context.Context, key string) error
+}
 
 type UserHandler struct {
 	srv      *UserService
 	validate *validator.Validate
 	log      *slog.Logger
 	jwt      *auth.JWTManager
+	rl       LoginLimiter
 }
 
-func NewUserHandler(srv *UserService, log *slog.Logger, jwt *auth.JWTManager) *UserHandler {
+func NewUserHandler(srv *UserService, log *slog.Logger, jwt *auth.JWTManager, rl LoginLimiter) *UserHandler {
 	return &UserHandler{
 		srv:      srv,
 		validate: validator.New(),
 		log:      log,
 		jwt:      jwt,
+		rl:       rl,
 	}
 }
 
 func (h *UserHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/users", func(r chi.Router) {
 		r.Post("/register", h.Register)
-		r.Post("/login", h.Login)
+		r.With(middleware.LoginRateLimiter(h.rl, h.log)).Post("/login", h.Login)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(h.jwt, h.log))
@@ -84,11 +94,14 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rlKey := ratelimit.LoginKey(httpx.ClientIP(r))
+
 	signedToken, err := h.srv.Login(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ErrLoginGeneric) {
+			h.recordLoginFailure(r.Context(), rlKey)
 			h.log.Error("login", "error", err)
-			httpx.WriteErrorJSON(w, http.StatusBadRequest, err.Error())
+			httpx.WriteErrorJSON(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 
@@ -97,7 +110,20 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.rl.Reset(r.Context(), rlKey); err != nil {
+		h.log.Error("login: reset rate limit counter", "error", err)
+	}
+
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"token": signedToken})
+}
+
+func (h *UserHandler) recordLoginFailure(ctx context.Context, key string) {
+	count, err := h.rl.RecordFailure(ctx, key)
+	if err != nil {
+		h.log.Error("login: record failure", "error", err)
+		return
+	}
+	h.log.Info("login: failed attempt recorded", "key", key, "count", count)
 }
 
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/httpx"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/ratelimit"
 	"github.com/google/uuid"
 )
 
@@ -41,4 +42,31 @@ func GetUserIDClaims(ctx context.Context) (uuid.UUID, error) {
 	}
 
 	return userID, nil
+}
+
+type LoginAllower interface {
+	Allow(ctx context.Context, key string) (bool, error)
+}
+
+func LoginRateLimiter(rl LoginAllower, log *slog.Logger) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := httpx.ClientIP(r)
+
+			allowed, err := rl.Allow(r.Context(), ratelimit.LoginKey(ip))
+			if err != nil {
+				log.Error("login rate limiter: check failed, allowing request", "error", err)
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !allowed {
+				log.Info("login rate limiter: blocked", "ip", ip)
+				httpx.WriteErrorJSON(w, http.StatusTooManyRequests, "too many login attempts, please try again later")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -3,6 +3,7 @@ package health
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -19,12 +20,14 @@ type DB interface {
 type Handler struct {
 	db  DB
 	rdb *redis.Client
+	log *slog.Logger
 }
 
-func New(db *pgxpool.Pool, rdb *redis.Client) *Handler {
+func New(db *pgxpool.Pool, rdb *redis.Client, log *slog.Logger) *Handler {
 	return &Handler{
 		db:  db,
 		rdb: rdb,
+		log: log,
 	}
 }
 
@@ -47,20 +50,19 @@ func (h *Handler) ReadyZ(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := h.db.Ping(ctx); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
 		httpx.WriteErrorJSON(w, http.StatusServiceUnavailable, "DB is not ready")
 		return
 	}
 
+	redisStatus := "up"
 	if err := h.rdb.Ping(r.Context()).Err(); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		httpx.WriteErrorJSON(w, http.StatusServiceUnavailable, "redis is not ready")
-		return
+		h.log.Warn("readyz: redis is down (non-fatal, optional dependency)", "error", err)
+		redisStatus = "down"
 	}
 
-	w.WriteHeader(http.StatusOK)
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{
-		"message": "DB and redis are ready",
+		"db":    "up",
+		"redis": redisStatus,
 	})
 }
 
