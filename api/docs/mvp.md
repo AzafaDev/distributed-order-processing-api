@@ -645,13 +645,76 @@ stock = 0
 
 ---
 
-# 10. Baru setelah MVP selesai...
+# 10. Setelah MVP selesai
 
-Ini yang menurutku paling menarik.
+> **Catatan revisi.** Bagian ini awalnya berisi urutan V1 → V5:
+> modular monolith → gRPC → Kafka → observability → load testing.
+> Urutan itu **dibalik** setelah review, dan roadmap yang berlaku sekarang
+> ada di bagian di bawah ini.
+>
+> Alasannya: memecah service di fase awal berarti memutuskan
+> "sistem ini perlu dipecah" tanpa data apa pun yang membuktikannya.
+> Belum ada baseline latency, belum ada tracing, belum diketahui
+> bottleneck-nya di mana.
+>
+> Konsekuensi konkretnya: begitu Order dan Inventory jadi dua service
+> dengan dua database, transaksi atomik yang jadi selling point MVP ini —
+> `FOR UPDATE` + atomic decrement dalam satu `BEGIN` — hilang, dan
+> digantikan saga serta compensating transaction. Itu harga yang mahal
+> untuk dibayar sebelum tahu apakah memang dibutuhkan.
+>
+> Karena itu observability dan load testing dipindah ke depan:
+> keduanya yang mengubah roadmap ini dari daftar keinginan
+> menjadi keputusan berbasis data.
 
-Kita **evolusikan project yang sama**.
+Roadmap dilacak sebagai milestone dan issue di GitHub.
 
-### V1 — Modular Monolith
+### Phase 7 — Hardening & Cleanup
+
+Menutup hutang MVP sebelum menambah teknologi baru.
+
+```text
+Redis dipakai untuk rate limiting (sebelumnya nganggur)
+Fix bug /readyz (WriteHeader berkali-kali)
+Cleanup dead code di PlaceOrder
+Compose profile untuk menjalankan full stack
+```
+
+### Phase 8 — Observability
+
+```text
+Go
+ │
+ └── OpenTelemetry
+       │
+       ├── Traces → Jaeger          (dikerjakan lebih dulu)
+       ├── Logs   → korelasi trace_id
+       └── Metrics → Prometheus → Grafana
+```
+
+Tracing didahulukan karena yang dibutuhkan sebelum load testing adalah
+kemampuan melihat **di mana** waktu request habis — dan itu tracing,
+bukan metrics. Metrics menyusul sebagai issue terpisah supaya tidak
+memasang banyak tool asing sekaligus.
+
+### Phase 9 — Load Testing & Baseline
+
+```text
+k6
+ │
+ ▼
+Skenario: baca produk, order tersebar, order rebutan satu produk
+ │
+ ▼
+Ukur: P50, P95, P99, RPS, error rate
+```
+
+Dijalankan **lokal** lewat Docker Compose, bukan di VPS — compute VPS
+menambah noise sehingga yang terukur jadi infrastruktur, bukan kode.
+
+Fase ini menghasilkan data yang menentukan isi Phase 10-12.
+
+### Phase 10 — Modular Monolith
 
 ```text
                 Go API
@@ -665,7 +728,30 @@ Kita **evolusikan project yang sama**.
                PostgreSQL
 ```
 
-### V2 — gRPC
+Batas antar modul dipertegas, tapi tetap satu proses dan satu database.
+Murah, reversible, dan mempermudah pemecahan nanti bila terbukti perlu.
+
+### Phase 11 — Event-Driven
+
+```text
+Order Service
+      │
+      ▼
+  outbox table  (ditulis dalam transaksi yang sama)
+      │
+      ▼
+    Kafka
+      │
+      ▼
+ Consumer non-kritis (audit / notification)
+```
+
+Outbox pattern dipakai karena menulis ke database dan mem-publish ke
+Kafka tidak bisa dilakukan secara atomik. Consumer pertama sengaja
+non-kritis — memindahkan pengurangan stok ke event berarti melepas
+jaminan atomik, dan itu bukan tempat untuk belajar Kafka.
+
+### Phase 12 — Service Split (Decision)
 
 ```text
 Order Service
@@ -675,44 +761,20 @@ Order Service
 Inventory Service
 ```
 
-### V3 — Event-driven
+**Belum tentu dikerjakan.** Keputusannya diambil dari data Phase 9,
+bukan dari asumsi. Kalau alasannya murni ingin belajar gRPC, itu sah
+untuk project portfolio — asalkan disadari dan ditulis terbuka.
+
+Apapun keputusannya, alasannya didokumentasikan. Kemampuan menjelaskan
+**kenapa tidak memecah service** sering lebih berkesan daripada
+memecahnya tanpa alasan.
+
+### Phase 13 — Deployment
 
 ```text
-Order Service
-      │
-      ▼
-    Kafka
-      │
- ┌────┼────────┐
- ▼    ▼        ▼
-Payment Inventory Notification
-```
-
-### V4 — Observability
-
-```text
-Go
+VPS
  │
- └── OpenTelemetry
-       │
-       ├── Metrics → Prometheus → Grafana
-       ├── Traces  → Jaeger
-       └── Logs
-```
-
-### V5 — Load testing
-
-```text
-k6
- │
- ▼
-1000 concurrent users
- │
- ▼
-Measure:
-P50
-P95
-P99
-RPS
-Error rate
+ ├── Docker Compose (profile full)
+ ├── Reverse proxy + TLS
+ └── Secret di luar repo
 ```

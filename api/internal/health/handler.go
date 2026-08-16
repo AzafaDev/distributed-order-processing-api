@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/httpx"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -47,16 +48,20 @@ func (h *Handler) ReadyZ(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.db.Ping(ctx); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintln(w, "DB is not ready")
+		httpx.WriteErrorJSON(w, http.StatusServiceUnavailable, "DB is not ready")
+		return
 	}
 
 	if err := h.rdb.Ping(r.Context()).Err(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintln(w, "Redis is not ready")
+		httpx.WriteErrorJSON(w, http.StatusServiceUnavailable, "redis is not ready")
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "DB and redis are ready")
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{
+		"message": "DB and redis are ready",
+	})
 }
 
 func (h *Handler) TestingGraceful(w http.ResponseWriter, r *http.Request) {
