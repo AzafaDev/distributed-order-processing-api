@@ -15,6 +15,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -23,9 +24,10 @@ import (
 type testEnv struct {
 	baseURL string
 	pool    *pgxpool.Pool
+	redis   *redis.Client
 }
 
-func setupTestEnv(t *testing.T) testEnv {
+func setupTestEnv(t *testing.T, opts ...func(*config.Config)) testEnv {
 	t.Helper()
 
 	ctx := context.Background()
@@ -71,6 +73,13 @@ func setupTestEnv(t *testing.T) testEnv {
 		GoEnv:       "test",
 		RedisHost:   redisHost,
 		RedisPort:   redisPort.Port(),
+
+		LoginRateLimit:  5,
+		LoginRateWindow: 15 * time.Minute,
+	}
+
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
 	log := logger.New(cfg.GoEnv)
@@ -85,7 +94,7 @@ func setupTestEnv(t *testing.T) testEnv {
 	srv := httptest.NewServer(app.Router)
 	t.Cleanup(srv.Close)
 
-	return testEnv{baseURL: srv.URL, pool: pool}
+	return testEnv{baseURL: srv.URL, pool: pool, redis: app.Redis}
 }
 
 func runMigrations(t *testing.T, dsn string) {
