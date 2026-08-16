@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -89,13 +90,17 @@ func TestOrderFlow(t *testing.T) {
 	decodeData(t, orderResp, &orderPayload)
 	require.NotEqual(t, uuid.Nil, orderPayload.Order.ID)
 
-	payResp := doRequest(t, env.baseURL, http.MethodPost, "/api/orders/"+orderPayload.Order.ID.String()+"/pay", loginPayload.Token, nil)
-	require.Equal(t, http.StatusOK, payResp.StatusCode)
-
+	// Charge is simulated with an 80% success rate, so a single attempt can
+	// legitimately fail. Retry the pay call until the order is marked paid.
 	var status string
-	err = env.pool.QueryRow(t.Context(), "SELECT status FROM orders WHERE id = $1", orderPayload.Order.ID).Scan(&status)
-	require.NoError(t, err)
-	require.Equal(t, "paid", status)
+	require.Eventually(t, func() bool {
+		payResp := doRequest(t, env.baseURL, http.MethodPost, "/api/orders/"+orderPayload.Order.ID.String()+"/pay", loginPayload.Token, nil)
+		require.Equal(t, http.StatusOK, payResp.StatusCode)
+
+		err = env.pool.QueryRow(t.Context(), "SELECT status FROM orders WHERE id = $1", orderPayload.Order.ID).Scan(&status)
+		require.NoError(t, err)
+		return status == "paid"
+	}, 5*time.Second, 50*time.Millisecond, "order was not marked paid after retrying payment")
 }
 
 func doRequest(t *testing.T, baseURL, method, path, token string, body []byte) *http.Response {
