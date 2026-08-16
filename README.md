@@ -27,21 +27,24 @@ A Go backend for order processing built around one core idea: **correctness unde
                 │ Products            │
                 │ Orders              │
                 │ Payments            │
-                └──────┬──────┬───────┘
-                       │      │
-                ┌──────▼──┐ ┌─▼──────┐
-                │Postgres │ │ Redis  │
-                └─────────┘ └────────┘
+                └──────────┬──────────┘
+                           │
+                           ▼
+                    ┌─────────────┐
+                    │  Postgres   │
+                    └─────────────┘
 ```
 
 Deliberately a modular monolith for now — no Kafka, no gRPC. The goal was to nail transactions, concurrency, authentication, idempotency, and testing first. The [roadmap](#roadmap) below covers what comes after.
+
+Redis is wired into the app (client setup, `/readyz` health check, exercised in integration tests) but not yet used for any business logic — idempotency keys and everything else currently live in PostgreSQL. It's there as a foundation for a future caching/rate-limiting layer, not a component the current feature set depends on.
 
 ## Tech Stack
 
 - **Language**: Go 1.26
 - **HTTP router**: [chi](https://github.com/go-chi/chi)
-- **Database**: PostgreSQL via [pgx](https://github.com/jackc/pgx) + [sqlc](https://sqlc.dev/) (type-safe generated queries)
-- **Cache / dedup store**: Redis
+- **Database**: PostgreSQL via [pgx](https://github.com/jackc/pgx) + [sqlc](https://sqlc.dev/) (type-safe generated queries), also backs the idempotency-key store
+- **Redis**: wired up (client, health check) as groundwork for a future caching layer — not yet used by any business logic
 - **Auth**: JWT ([golang-jwt](https://github.com/golang-jwt/jwt)) with explicit algorithm-confusion protection, bcrypt password hashing
 - **Validation**: [go-playground/validator](https://github.com/go-playground/validator)
 - **Migrations**: [golang-migrate](https://github.com/golang-migrate/migrate)
