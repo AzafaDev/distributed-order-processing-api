@@ -10,9 +10,7 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/order/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	"github.com/google/uuid"
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -167,10 +165,6 @@ func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, item
 	})
 
 	if err != nil {
-		var pgxErr *pgconn.PgError
-		if errors.As(err, &pgxErr) && pgxErr.Code == pgerrcode.UniqueViolation {
-			return nil, nil, nil, ErrOrderNotFound
-		}
 		return nil, nil, nil, err
 	}
 
