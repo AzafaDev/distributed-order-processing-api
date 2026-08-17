@@ -213,7 +213,7 @@ func TestReadyzIgnoresRedis(t *testing.T) {
 		cfg.RedisPort = "1"
 	})
 
-	resp := doRequest(t, env.baseURL, http.MethodGet, "/api/readyz", "", nil)
+	resp := doRequest(t, env.baseURL, http.MethodGet, "/readyz", "", nil)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 

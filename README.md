@@ -6,7 +6,7 @@ A Go backend for order processing built around one core idea: **correctness unde
 
 - **Race-safe stock deduction** — row-level locking (`SELECT ... FOR UPDATE`) combined with an atomic conditional update (`UPDATE products SET stock = stock - $1 WHERE stock >= $1`) guarantees no overselling, even under heavy concurrent load. Proven by an integration test that fires 100 concurrent orders against a stock of 10.
 - **Deadlock-safe multi-row locking** — when an order touches multiple products, rows are locked in a deterministic order (sorted by product UUID bytes) so concurrent transactions can never deadlock on each other.
-- **Idempotency-Key middleware** — clients can safely retry `POST /orders` after a timeout. Requests are deduplicated by key + SHA-256 body hash, in-flight requests are protected from being replayed twice, and stale in-flight keys (>30s) can be reclaimed instead of blocking forever.
+- **Idempotency-Key middleware** — clients can safely retry `POST /api/orders/` after a timeout. Requests are deduplicated by key + SHA-256 body hash, in-flight requests are protected from being replayed twice, and stale in-flight keys (>30s) can be reclaimed instead of blocking forever.
 - **Idempotent payment flow** — a fake payment provider simulates real-world flakiness (80% success rate). Retrying a payment never double-charges: an already-paid order or already-successful payment short-circuits and returns the existing result.
 - **Price snapshotting** — `order_items` stores the price at time of purchase instead of joining live product prices, so historical orders remain accurate even after a product's price changes.
 
@@ -54,22 +54,28 @@ Redis is wired into the app (client setup, `/readyz` health check, exercised in 
 
 ## API Endpoints
 
-| Method | Path                      | Auth | Notes                          |
-|--------|---------------------------|------|---------------------------------|
-| POST   | `/users/register`         | –    |                                  |
-| POST   | `/users/login`            | –    | Returns JWT                     |
-| GET    | `/users/me`                | ✅   |                                  |
-| GET    | `/products`               | –    | Paginated                       |
-| POST   | `/products`               | –    |                                  |
-| GET    | `/products/{id}`          | –    |                                  |
-| PATCH  | `/products/{id}`          | –    | Partial update                  |
-| DELETE | `/products/{id}`          | –    |                                  |
-| GET    | `/orders/`                 | ✅   | List current user's orders      |
-| GET    | `/orders/{id}`             | ✅   |                                  |
-| POST   | `/orders/`                 | ✅   | Requires `Idempotency-Key` header |
-| POST   | `/orders/{id}/cancel`      | ✅   | Restores stock                  |
-| POST   | `/orders/{id}/pay`         | ✅   | Idempotent                      |
-| GET    | `/orders/{id}/payment`     | ✅   |                                  |
+Business endpoints are served under the `/api` prefix. Health probes sit at the root so load balancers and orchestrators don't need to know the prefix.
+
+Endpoints marked ✅ expect an `Authorization: Bearer <jwt>` header. A missing, malformed, or expired token returns `401 Unauthorized` with a `WWW-Authenticate: Bearer` header, so clients can treat it as a signal to re-authenticate and retry.
+
+| Method | Path                        | Auth | Notes                                   |
+|--------|-----------------------------|------|-----------------------------------------|
+| GET    | `/livez`                    | –    | Liveness probe                          |
+| GET    | `/readyz`                   | –    | Readiness probe; Redis is non-fatal     |
+| POST   | `/api/users/register`       | –    |                                         |
+| POST   | `/api/users/login`          | –    | Returns JWT; rate limited               |
+| GET    | `/api/users/me`             | ✅   |                                         |
+| GET    | `/api/products/`            | –    | Paginated                               |
+| POST   | `/api/products/`            | –    |                                         |
+| GET    | `/api/products/{id}`        | –    |                                         |
+| PATCH  | `/api/products/{id}`        | –    | Partial update                          |
+| DELETE | `/api/products/{id}`        | –    |                                         |
+| GET    | `/api/orders/`              | ✅   | List current user's orders              |
+| GET    | `/api/orders/{id}`          | ✅   |                                         |
+| POST   | `/api/orders/`              | ✅   | Requires `Idempotency-Key` header       |
+| POST   | `/api/orders/{id}/cancel`   | ✅   | Restores stock                          |
+| POST   | `/api/orders/{id}/pay`      | ✅   | Idempotent                              |
+| GET    | `/api/orders/{id}/payment`  | ✅   |                                         |
 
 ## Concurrency: the core selling point
 
@@ -97,16 +103,23 @@ Expected:
 
 ## Getting Started
 
-**Prerequisites**: Go 1.26+, Docker.
+**Prerequisites**: Go 1.26+, Docker. For the local workflow you also need [golang-migrate](https://github.com/golang-migrate/migrate) on your `PATH`.
+
+There are two ways to run the stack. Pick the local workflow for day-to-day development, and the container workflow for load testing and demos.
+
+### Local development (default)
+
+Postgres and Redis run in containers, the API runs on your machine so you get fast rebuilds.
 
 ```bash
 git clone <repo-url>
 cd distributed-order-processing-api/api
 
 # configure environment (see variables below)
-cp .env.example .env   # create your own if not present
+cp .env.example .env
+# then fill in POSTGRES_PASSWORD and JWT_SECRET, and update DATABASE_URL to match
 
-# start Postgres + Redis
+# start Postgres + Redis only
 docker compose up -d
 
 # run migrations
@@ -116,7 +129,40 @@ make migrate-up
 go run ./cmd/api
 ```
 
-Required environment variables: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRY`, `PORT` (default `8080`), `REDIS_HOST`, `REDIS_PORT`, plus `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` for local Docker Compose.
+### Full stack in containers
+
+The `full` Compose profile additionally builds the API image and runs migrations for you:
+
+```bash
+docker compose --profile full up -d --build
+```
+
+Startup order is enforced by Compose: `db` and `redis` must report healthy, then the one-shot
+`migrate` service applies all migrations, and only after it exits successfully does the API start.
+No manual `make migrate-up` is needed here.
+
+Inside the Compose network the API talks to `db:5432` and `redis:6379`, so the `DATABASE_URL` and
+`REDIS_HOST` in your `.env` (which point at `localhost` for the local workflow) are overridden
+automatically — you do not need a second `.env`.
+
+Tear it down with the profile flag as well, otherwise the API container is left running:
+
+```bash
+docker compose --profile full down        # add -v to also drop the database volume
+```
+
+Verify it came up:
+
+```bash
+curl localhost:8080/livez     # process is alive
+curl localhost:8080/readyz    # {"success":true,"data":{"db":"up","redis":"up"}}
+```
+
+### Environment variables
+
+Required: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRY`, `PORT` (default `8080`), `REDIS_HOST`, `REDIS_PORT`, plus `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` for Docker Compose. `POSTGRES_PORT` and `REDIS_PORT` control the ports published to your host; container-to-container traffic always uses 5432 and 6379.
+
+`.env` is optional at runtime — if the file is absent the app reads configuration straight from the process environment, which is how the containerized profile works.
 
 ## Testing
 

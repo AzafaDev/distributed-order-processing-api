@@ -22,10 +22,11 @@ type Handler struct {
 func NewRouter(h Handler) http.Handler {
 	r := chi.NewRouter()
 
+	h.Health.RegisterRoutes(r)
+
 	r.Route("/api", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
 			h.User.RegisterRoutes(r)
-			h.Health.RegisterRoutes(r)
 			h.Product.RegisterRoutes(r)
 			h.Order.RegisterRoutes(r)
 			h.Payment.RegisterRoutes(r)

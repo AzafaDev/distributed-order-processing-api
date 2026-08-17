@@ -34,7 +34,6 @@ func New(db *pgxpool.Pool, rdb *redis.Client, log *slog.Logger) *Handler {
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/livez", h.LiveZ)
 	r.Get("/readyz", h.ReadyZ)
-	r.Get("/sleep", h.TestingGraceful)
 }
 
 func (h *Handler) LiveZ(w http.ResponseWriter, r *http.Request) {
@@ -64,11 +63,4 @@ func (h *Handler) ReadyZ(w http.ResponseWriter, r *http.Request) {
 		"db":    "up",
 		"redis": redisStatus,
 	})
-}
-
-func (h *Handler) TestingGraceful(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintln(w, "starting 5 seconds to sleep")
-	time.Sleep(5 * time.Second)
-	fmt.Fprintln(w, "finished to sleep for 5 seconds")
 }
