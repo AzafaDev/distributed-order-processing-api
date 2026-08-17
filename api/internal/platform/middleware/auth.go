@@ -25,7 +25,8 @@ func Auth(jwtManager *auth.JWTManager, log *slog.Logger) func(next http.Handler)
 			userClaims, err := jwtManager.ValidateToken(tokenString, string(jwtManager.Secret))
 			if err != nil {
 				log.Error("auth middleware", "error", err)
-				httpx.WriteErrorJSON(w, http.StatusForbidden, "invalid or expired token")
+				w.Header().Set("WWW-Authenticate", `Bearer realm="api"`)
+				httpx.WriteErrorJSON(w, http.StatusUnauthorized, "invalid or expired token")
 				return
 			}
 			ctx := context.WithValue(r.Context(), userID, userClaims.UserID)
