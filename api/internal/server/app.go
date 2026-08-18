@@ -20,6 +20,7 @@ import (
 	productSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
 	userSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/user/sqlc"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -34,12 +35,27 @@ func BuildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			dbPool.Close()
+		}
+	}()
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisHost + ":" + cfg.RedisPort,
 		Password: "",
 		Protocol: 3,
 	})
+	defer func() {
+		if err != nil {
+			rdb.Close()
+		}
+	}()
+
+	if err = redisotel.InstrumentTracing(rdb); err != nil {
+		return nil, err
+	}
+
 	loginRateLimiter := ratelimit.New(rdb, cfg.LoginRateLimit, cfg.LoginRateWindow)
 
 	jwtManager := auth.NewJWTManager(cfg.JwtSecret, cfg.JwtExpiry)
