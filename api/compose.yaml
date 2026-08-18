@@ -1,7 +1,7 @@
 services:
   jaeger:
     profiles: ["full"]
-    image: jaegertracing/jaeger:2.0.0
+    image: jaegertracing/jaeger:2.10.0
     ports:
     - "16686:16686"
     - "4317:4317"

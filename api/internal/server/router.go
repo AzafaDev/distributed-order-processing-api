@@ -9,6 +9,9 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Handler struct {
@@ -22,6 +25,14 @@ type Handler struct {
 func NewRouter(h Handler) http.Handler {
 	r := chi.NewRouter()
 
+	// span name is already set by otelhttp from r.Pattern which is
+	// filled by chi, and http.server is fallback for unmatched route.
+	r.Use(otelhttp.NewMiddleware("http.server", otelhttp.WithFilter(func(r *http.Request) bool {
+		return r.URL.Path != "/livez" && r.URL.Path != "/readyz"
+	})))
+
+	r.Use(routeTag)
+
 	h.Health.RegisterRoutes(r)
 
 	r.Route("/api", func(r chi.Router) {
@@ -34,4 +45,18 @@ func NewRouter(h Handler) http.Handler {
 	})
 
 	return r
+}
+
+func routeTag(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+
+		pattern := chi.RouteContext(r.Context()).RoutePattern()
+		if pattern == "" {
+			return
+		}
+
+		span := trace.SpanFromContext(r.Context())
+		span.SetAttributes(semconv.HTTPRoute(pattern))
+	})
 }

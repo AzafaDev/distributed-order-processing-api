@@ -2,6 +2,7 @@ package tracing
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 
@@ -13,7 +14,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
-func New(ctx context.Context, cfg *config.Config) (*trace.TracerProvider, error) {
+func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*trace.TracerProvider, error) {
 	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(cfg.OtelExporterEndpoint))
 	if err != nil {
 		return nil, err
@@ -40,6 +41,10 @@ func New(ctx context.Context, cfg *config.Config) (*trace.TracerProvider, error)
 			propagation.TraceContext{},
 		),
 	)
+
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(cause error) {
+		log.Error("new tracing", "error", cause)
+	}))
 
 	return tp, nil
 }

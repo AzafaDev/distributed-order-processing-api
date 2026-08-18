@@ -25,7 +25,7 @@ func main() {
 
 	ctx := context.Background()
 
-	tp, err := tracing.New(ctx, cfg)
+	tp, err := tracing.New(ctx, cfg, log)
 	if err != nil {
 		log.Warn("tracing disabled, continuing without it", "error", err)
 	}
