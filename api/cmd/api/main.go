@@ -12,6 +12,7 @@ import (
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/logger"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/tracing"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/server"
 )
 
@@ -23,6 +24,11 @@ func main() {
 	log := logger.New(cfg.GoEnv)
 
 	ctx := context.Background()
+
+	tp, err := tracing.New(ctx, cfg, log)
+	if err != nil {
+		log.Warn("tracing disabled, continuing without it", "error", err)
+	}
 
 	app, err := server.BuildApp(ctx, cfg, log)
 	if err != nil {
@@ -63,6 +69,13 @@ func main() {
 	log.Info("shutdown server gracefully")
 	if err := serv.Shutdown(shutdownCtx); err != nil {
 		log.Error("failed to shutdown server gracefully", "error", err)
+	}
+
+	if tp != nil {
+		log.Info("closing tracing open telemetry")
+		if err := tp.Shutdown(shutdownCtx); err != nil {
+			log.Error("failed to shutdown tracing open telemetry", "error", err)
+		}
 	}
 
 	log.Info("closing database gracefully")

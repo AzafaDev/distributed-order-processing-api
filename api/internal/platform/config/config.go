@@ -20,6 +20,10 @@ type Config struct {
 
 	LoginRateLimit  int
 	LoginRateWindow time.Duration
+
+	OtelExporterEndpoint string
+	OtelServiceName      string
+	OtelSampleRatio      float64
 }
 
 func Load() (*Config, error) {
@@ -51,9 +55,25 @@ func Load() (*Config, error) {
 
 		LoginRateLimit:  getEnvInt("LOGIN_RATE_LIMIT", 5),
 		LoginRateWindow: getEnvDuration("LOGIN_RATE_WINDOW", 15*time.Minute),
+
+		OtelExporterEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+		OtelServiceName:      getEnv("OTEL_SERVICE_NAME", "order-api"),
+		OtelSampleRatio:      getEnvFloat("OTEL_SAMPLE_RATIO", 1.0),
 	}
 
 	return &cfg, nil
+}
+
+func getEnvFloat(key string, fallback float64) float64 {
+	valStr := os.Getenv(key)
+	if valStr != "" {
+		val, err := strconv.ParseFloat(valStr, 64)
+		if err != nil {
+			return fallback
+		}
+		return val
+	}
+	return fallback
 }
 
 func getEnv(key, fallback string) string {
