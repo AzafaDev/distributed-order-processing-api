@@ -55,13 +55,13 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Error("register", "error", err)
+		h.log.ErrorContext(r.Context(), "register", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		h.log.Error("register", "error", err)
+		h.log.ErrorContext(r.Context(), "register", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid email or password format")
 		return
 	}
@@ -69,7 +69,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	createdUser, err := h.srv.Register(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ErrEmailRegistered) {
-			h.log.Error("register", "error", err)
+			h.log.ErrorContext(r.Context(), "register", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, ErrEmailRegistered.Error())
 			return
 		}
@@ -83,13 +83,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Error("login", "error", err)
+		h.log.ErrorContext(r.Context(), "login", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		h.log.Error("login", "error", err)
+		h.log.ErrorContext(r.Context(), "login", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid email or password")
 		return
 	}
@@ -100,18 +100,18 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, ErrLoginGeneric) {
 			h.recordLoginFailure(r.Context(), rlKey)
-			h.log.Error("login", "error", err)
+			h.log.ErrorContext(r.Context(), "login", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 
-		h.log.Error("login", "error", err)
+		h.log.ErrorContext(r.Context(), "login", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
 		return
 	}
 
 	if err := h.rl.Reset(r.Context(), rlKey); err != nil {
-		h.log.Error("login: reset rate limit counter", "error", err)
+		h.log.ErrorContext(r.Context(), "login: reset rate limit counter", "error", err)
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"token": signedToken})
@@ -120,16 +120,16 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) recordLoginFailure(ctx context.Context, key string) {
 	count, err := h.rl.RecordFailure(ctx, key)
 	if err != nil {
-		h.log.Error("login: record failure", "error", err)
+		h.log.ErrorContext(ctx, "login: record failure", "error", err)
 		return
 	}
-	h.log.Info("login: failed attempt recorded", "key", key, "count", count)
+	h.log.InfoContext(ctx, "login: failed attempt recorded", "key", key, "count", count)
 }
 
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.Error("Me", "error", err)
+		h.log.ErrorContext(r.Context(), "Me", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
 		return
 	}

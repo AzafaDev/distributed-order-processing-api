@@ -24,7 +24,7 @@ func Auth(jwtManager *auth.JWTManager, log *slog.Logger) func(next http.Handler)
 			tokenString := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer"))
 			userClaims, err := jwtManager.ValidateToken(tokenString, string(jwtManager.Secret))
 			if err != nil {
-				log.Error("auth middleware", "error", err)
+				log.ErrorContext(r.Context(), "auth middleware", "error", err)
 				w.Header().Set("WWW-Authenticate", `Bearer realm="api"`)
 				httpx.WriteErrorJSON(w, http.StatusUnauthorized, "invalid or expired token")
 				return
@@ -56,13 +56,13 @@ func LoginRateLimiter(rl LoginAllower, log *slog.Logger) func(next http.Handler)
 
 			allowed, err := rl.Allow(r.Context(), ratelimit.LoginKey(ip))
 			if err != nil {
-				log.Error("login rate limiter: check failed, allowing request", "error", err)
+				log.ErrorContext(r.Context(), "login rate limiter: check failed, allowing request", "error", err)
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			if !allowed {
-				log.Info("login rate limiter: blocked", "ip", ip)
+				log.InfoContext(r.Context(), "login rate limiter: blocked", "ip", ip)
 				httpx.WriteErrorJSON(w, http.StatusTooManyRequests, "too many login attempts, please try again later")
 				return
 			}
