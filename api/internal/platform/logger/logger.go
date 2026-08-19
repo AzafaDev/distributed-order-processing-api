@@ -18,5 +18,5 @@ func New(env string) *slog.Logger {
 		})
 	}
 
-	return slog.New(handler)
+	return slog.New(NewTraceHandler(handler))
 }

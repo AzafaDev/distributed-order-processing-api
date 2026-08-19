@@ -23,7 +23,7 @@ func IdempotencyMiddleware(s *idempotency.IdempotencyService, log *slog.Logger) 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID, err := GetUserIDClaims(r.Context())
 			if err != nil {
-				log.Error("idempotency middleware", "error", err)
+				log.ErrorContext(r.Context(), "idempotency middleware", "error", err)
 				httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
@@ -36,7 +36,7 @@ func IdempotencyMiddleware(s *idempotency.IdempotencyService, log *slog.Logger) 
 
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err != nil {
-				log.Error("idempotency middleware", "error", err)
+				log.ErrorContext(r.Context(), "idempotency middleware", "error", err)
 				httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid request body payload")
 				return
 			}
@@ -48,7 +48,7 @@ func IdempotencyMiddleware(s *idempotency.IdempotencyService, log *slog.Logger) 
 
 			idempotencyResult, err := s.CheckAndClaim(r.Context(), valueStr, requestHash, userID)
 			if err != nil {
-				log.Error("idempotency middleware", "error", err)
+				log.ErrorContext(r.Context(), "idempotency middleware", "error", err)
 				httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
 				return
 			}

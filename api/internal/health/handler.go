@@ -55,7 +55,7 @@ func (h *Handler) ReadyZ(w http.ResponseWriter, r *http.Request) {
 
 	redisStatus := "up"
 	if err := h.rdb.Ping(r.Context()).Err(); err != nil {
-		h.log.Warn("readyz: redis is down (non-fatal, optional dependency)", "error", err)
+		h.log.WarnContext(r.Context(), "readyz: redis is down (non-fatal, optional dependency)", "error", err)
 		redisStatus = "down"
 	}
 
