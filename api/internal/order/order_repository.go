@@ -13,6 +13,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -21,6 +25,34 @@ var (
 	ErrOrderItemsUnvailable = errors.New("no order items is available")
 	ErrOrderNotPending      = errors.New("status order is not pending")
 )
+
+var tracer = otel.Tracer("github.com/AzafaDev/distributed-order-processing-api/internal/order")
+
+var businessErrors = []error{
+	product.ErrProductNotFound,
+	product.ErrInsufficientStock,
+	ErrOrderNotFound,
+	ErrOrderNotPending,
+	ErrOrderItemsUnvailable,
+}
+
+func endSpan(span trace.Span, err error) {
+	defer span.End()
+
+	if err == nil {
+		return
+	}
+
+	for _, businessErr := range businessErrors {
+		if errors.Is(err, businessErr) {
+			span.SetAttributes(attribute.String("order.outcome", err.Error()))
+			return
+		}
+	}
+
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+}
 
 type Repository interface {
 	PlaceOrder(ctx context.Context, userID uuid.UUID, items []CreateOrderItemRequest) (*Order, []OrderItem, *Payment, error)
@@ -41,7 +73,10 @@ func NewOrderRepository(q *sqlc.Queries, p *pgxpool.Pool) Repository {
 	}
 }
 
-func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, items []CreateOrderItemRequest) (*Order, []OrderItem, *Payment, error) {
+func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, items []CreateOrderItemRequest) (_ *Order, _ []OrderItem, _ *Payment, err error) {
+	ctx, span := tracer.Start(ctx, "order.PlaceOrder")
+	defer func() { endSpan(span, err) }()
+
 	orderItemsResponse := []OrderItem{}
 	var orderResponse Order
 	var paymentResponse Payment
@@ -71,23 +106,30 @@ func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, item
 		return bytes.Compare(keysProduct[i][:], keysProduct[j][:]) < 0
 	})
 
+	lockCtx, lockSpan := tracer.Start(ctx, "order.lockProducts")
+	lockSpan.SetAttributes(attribute.Int("order.product_count", len(keysProduct)))
+
 	for _, productID := range keysProduct {
-		sqlcProduct, err := qtx.LockProductForUpdate(ctx, pgtype.UUID{
+		sqlcProduct, err := qtx.LockProductForUpdate(lockCtx, pgtype.UUID{
 			Bytes: productID,
 			Valid: true,
 		})
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
+				endSpan(lockSpan, product.ErrProductNotFound)
 				return nil, nil, nil, product.ErrProductNotFound
 			}
+			endSpan(lockSpan, err)
 			return nil, nil, nil, err
 		}
 		if sqlcProduct.Stock < int32(qtyByProduct[productID]) {
+			endSpan(lockSpan, product.ErrInsufficientStock)
 			return nil, nil, nil, product.ErrInsufficientStock
 		}
 
 		productPrice, err := sqlcProduct.Price.Float64Value()
 		if err != nil {
+			endSpan(lockSpan, err)
 			return nil, nil, nil, err
 		}
 
@@ -96,6 +138,8 @@ func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, item
 		totalPrice += roundedPrice * qtyByProduct[productID]
 		mapProductPrice[sqlcProduct.ID.Bytes] = roundedPrice
 	}
+
+	endSpan(lockSpan, nil)
 
 	sqlcOrder, err := qtx.CreateOrder(ctx, sqlc.CreateOrderParams{
 		UserID: pgtype.UUID{
@@ -179,7 +223,7 @@ func (r *OrderRepository) PlaceOrder(ctx context.Context, userID uuid.UUID, item
 		UpdatedAt:     sqlcPayment.UpdatedAt.Time,
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -243,7 +287,10 @@ func (r *OrderRepository) GetOrderByID(ctx context.Context, userID, orderID uuid
 	}, nil
 }
 
-func (r *OrderRepository) CancelOrder(ctx context.Context, userID, orderID uuid.UUID) (*Order, error) {
+func (r *OrderRepository) CancelOrder(ctx context.Context, userID, orderID uuid.UUID) (_ *Order, err error) {
+	ctx, span := tracer.Start(ctx, "order.CancelOrder")
+	defer func() { endSpan(span, err) }()
+
 	tx, err := r.p.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err

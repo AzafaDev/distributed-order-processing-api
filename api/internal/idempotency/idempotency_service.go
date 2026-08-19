@@ -7,9 +7,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 const staleClaimTimeout = 30 * time.Second
+
+var tracer = otel.Tracer("github.com/AzafaDev/distributed-order-processing-api/internal/idempotency")
 
 type IdempotencyService struct {
 	r Repository
@@ -21,8 +26,22 @@ func NewIdempotencyService(r Repository) *IdempotencyService {
 	}
 }
 
-func (s *IdempotencyService) CheckAndClaim(ctx context.Context, key, requestHash string, userID uuid.UUID) (*IdempotencyResult, error) {
-	_, err := s.r.CreateIdempotency(ctx, key, requestHash, userID)
+func (s *IdempotencyService) CheckAndClaim(ctx context.Context, key, requestHash string, userID uuid.UUID) (result *IdempotencyResult, err error) {
+	ctx, span := tracer.Start(ctx, "idempotency.CheckAndClaim")
+	defer func() {
+		defer span.End()
+
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			return
+		}
+		if result != nil {
+			span.SetAttributes(attribute.String("idempotency.status", string(result.Status)))
+		}
+	}()
+
+	_, err = s.r.CreateIdempotency(ctx, key, requestHash, userID)
 	if err == nil {
 		return &IdempotencyResult{
 			Status:   New,
