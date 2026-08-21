@@ -26,12 +26,14 @@ func NewPaymentHandler(serv *PaymentService, jwt *auth.JWTManager, log *slog.Log
 	}
 }
 
+// RegisterRoutes mounts the payment routes onto the shared /orders router.
+// See OrderHandler.RegisterRoutes for why the router is shared.
 func (h *PaymentHandler) RegisterRoutes(r chi.Router) {
-	r.Route("/orders/{id}", func(r chi.Router) {
+	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(h.jwt, h.log))
 
-		r.Post("/pay", h.Pay)
-		r.Get("/payment", h.GetPaymentByOrderID)
+		r.Post("/{id}/pay", h.Pay)
+		r.Get("/{id}/payment", h.GetPaymentByOrderID)
 	})
 }
 

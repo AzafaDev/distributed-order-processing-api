@@ -38,9 +38,12 @@ func NewRouter(h Handler, m *metrics.Metrics) http.Handler {
 	h.Health.RegisterRoutes(r)
 
 	r.Route("/api", func(r chi.Router) {
-		r.Group(func(r chi.Router) {
-			h.User.RegisterRoutes(r)
-			h.Product.RegisterRoutes(r)
+		h.User.RegisterRoutes(r)
+		h.Product.RegisterRoutes(r)
+
+		// Order and payment share one /orders subtree; see
+		// OrderHandler.RegisterRoutes.
+		r.Route("/orders", func(r chi.Router) {
 			h.Order.RegisterRoutes(r)
 			h.Payment.RegisterRoutes(r)
 		})
