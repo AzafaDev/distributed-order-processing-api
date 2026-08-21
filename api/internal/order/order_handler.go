@@ -34,8 +34,14 @@ func NewOrderHandler(s *OrderService, log *slog.Logger, jw *auth.JWTManager, is 
 	}
 }
 
+// RegisterRoutes mounts the order routes onto an existing /orders router.
+//
+// The router is shared with the payment module rather than each module
+// mounting its own /orders subtree: two sibling subtrees ("/orders" and
+// "/orders/{id}") would shadow each other in chi's trie, and whichever one
+// owns "/orders/{id}/..." silently 404s the other's routes.
 func (h *OrderHandler) RegisterRoutes(r chi.Router) {
-	r.Route("/orders", func(r chi.Router) {
+	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(h.jw, h.log))
 		r.Get("/", h.GetOrders)
 		r.Get("/{id}", h.GetOrderByID)
@@ -123,11 +129,6 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	orders, err := h.s.GetOrders(r.Context(), userID)
 	if err != nil {
-		if errors.Is(err, ErrOrderUnvailable) {
-			h.log.ErrorContext(r.Context(), "get orders", "error", err)
-			httpx.WriteJSON(w, http.StatusOK, []Order{})
-			return
-		}
 		h.log.ErrorContext(r.Context(), "get orders", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusInternalServerError, "something went wrong")
 		return
@@ -202,9 +203,11 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if errors.Is(err, product.ErrInsufficientStock) {
+		// Restoring stock cannot fail on stock; it can only fail if the
+		// product row is gone.
+		if errors.Is(err, product.ErrProductNotFound) {
 			h.log.ErrorContext(r.Context(), "cancel order", "error", err)
-			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
+			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
 
