@@ -6,6 +6,7 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/health"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/order"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/payment"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/metrics"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/user"
 	"github.com/go-chi/chi/v5"
@@ -22,7 +23,7 @@ type Handler struct {
 	Payment *payment.PaymentHandler
 }
 
-func NewRouter(h Handler) http.Handler {
+func NewRouter(h Handler, m *metrics.Metrics) http.Handler {
 	r := chi.NewRouter()
 
 	// span name is already set by otelhttp from r.Pattern which is
@@ -32,6 +33,7 @@ func NewRouter(h Handler) http.Handler {
 	})))
 
 	r.Use(routeTag)
+	r.Use(m.Middleware)
 
 	h.Health.RegisterRoutes(r)
 

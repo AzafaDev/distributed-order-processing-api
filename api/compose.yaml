@@ -26,6 +26,7 @@ services:
       JWT_EXPIRY: ${JWT_EXPIRY}
       GO_ENV: production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      METRICS_PORT: 9100
     depends_on:
       db:
         condition: service_healthy
@@ -35,6 +36,38 @@ services:
         condition: service_completed_successfully
       jaeger:
         condition: service_healthy
+  prometheus:
+    profiles: ["full"]
+    image: prom/prometheus:v3.7.3
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  grafana:
+    profiles: ["full"]
+    image: grafana/grafana:12.3.1
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      # Local-only stack; no auth to fight with while looking at graphs.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
   migrate:
     profiles: ["full"]
     image: migrate/migrate:v4.18.1
@@ -80,3 +113,5 @@ services:
 
 volumes:
   db-data:
+  prometheus-data:
+  grafana-data:

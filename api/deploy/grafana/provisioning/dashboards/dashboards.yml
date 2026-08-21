@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: order-api
+    type: file
+    allowUiUpdates: true
+    options:
+      # Dashboards are provisioned from the repo so they survive container
+      # recreation; edits made in the UI must be exported back to this path.
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
