@@ -41,11 +41,30 @@ func main() {
 		Handler: app.Router,
 	}
 
+	// Metrics live on their own listener so Prometheus scrapes never travel
+	// through the public router's tracing, auth and rate limiting middleware,
+	// and so the endpoint is not exposed publicly alongside the API.
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", app.Metrics.Handler())
+
+	metricsServ := http.Server{
+		Addr:    ":" + cfg.MetricsPort,
+		Handler: metricsMux,
+	}
+
 	serverErr := make(chan error, 1)
 
 	go func() {
 		log.Info("server is starting", "port", cfg.Port)
 		err := serv.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	go func() {
+		log.Info("metrics server is starting", "port", cfg.MetricsPort)
+		err := metricsServ.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -69,6 +88,11 @@ func main() {
 	log.Info("shutdown server gracefully")
 	if err := serv.Shutdown(shutdownCtx); err != nil {
 		log.Error("failed to shutdown server gracefully", "error", err)
+	}
+
+	log.Info("shutdown metrics server gracefully")
+	if err := metricsServ.Shutdown(shutdownCtx); err != nil {
+		log.Error("failed to shutdown metrics server gracefully", "error", err)
 	}
 
 	if tp != nil {

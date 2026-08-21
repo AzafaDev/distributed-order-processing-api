@@ -24,6 +24,8 @@ type Config struct {
 	OtelExporterEndpoint string
 	OtelServiceName      string
 	OtelSampleRatio      float64
+
+	MetricsPort string
 }
 
 func Load() (*Config, error) {
@@ -59,6 +61,8 @@ func Load() (*Config, error) {
 		OtelExporterEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
 		OtelServiceName:      getEnv("OTEL_SERVICE_NAME", "order-api"),
 		OtelSampleRatio:      getEnvFloat("OTEL_SAMPLE_RATIO", 1.0),
+
+		MetricsPort: getEnv("METRICS_PORT", "9100"),
 	}
 
 	return &cfg, nil

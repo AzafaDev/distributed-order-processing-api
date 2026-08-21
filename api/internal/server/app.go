@@ -15,6 +15,7 @@ import (
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/auth"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/config"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/database"
+	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/metrics"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/platform/ratelimit"
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product"
 	productSqlc "github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
@@ -25,9 +26,10 @@ import (
 )
 
 type App struct {
-	Router http.Handler
-	DB     *database.DB
-	Redis  *redis.Client
+	Router  http.Handler
+	DB      *database.DB
+	Redis   *redis.Client
+	Metrics *metrics.Metrics
 }
 
 func BuildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error) {
@@ -53,6 +55,11 @@ func BuildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 	}()
 
 	if err = redisotel.InstrumentTracing(rdb); err != nil {
+		return nil, err
+	}
+
+	appMetrics := metrics.New()
+	if err = appMetrics.RegisterPool(dbPool.Pool); err != nil {
 		return nil, err
 	}
 
@@ -92,11 +99,12 @@ func BuildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 		Product: productHandler,
 		Order:   orderHandler,
 		Payment: paymentHandler,
-	})
+	}, appMetrics)
 
 	return &App{
-		Router: router,
-		DB:     dbPool,
-		Redis:  rdb,
+		Router:  router,
+		DB:      dbPool,
+		Redis:   rdb,
+		Metrics: appMetrics,
 	}, nil
 }
