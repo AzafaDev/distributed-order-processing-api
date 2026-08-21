@@ -50,7 +50,7 @@ func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 		var err error
 		page, err = strconv.Atoi(pageStr)
 		if err != nil {
-			h.log.ErrorContext(r.Context(), "list products", "error", err)
+			h.log.WarnContext(r.Context(), "list products", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid page format")
 			return
 		}
@@ -61,7 +61,7 @@ func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 		var err error
 		limit, err = strconv.Atoi(limitStr)
 		if err != nil {
-			h.log.ErrorContext(r.Context(), "list products", "error", err)
+			h.log.WarnContext(r.Context(), "list products", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid limit format")
 			return
 		}
@@ -85,7 +85,7 @@ func (h *ProductHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request) {
 	productID, err := parseProductID(r)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "get product by id", "error", err)
+		h.log.WarnContext(r.Context(), "get product by id", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
@@ -93,7 +93,7 @@ func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request) 
 	existingProduct, err := h.srv.GetProductByID(r.Context(), productID)
 	if err != nil {
 		if errors.Is(err, ErrProductNotFound) {
-			h.log.ErrorContext(r.Context(), "get product by id", "error", err)
+			h.log.WarnContext(r.Context(), "get product by id", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -108,13 +108,13 @@ func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request) 
 func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	var req CreateProductRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.ErrorContext(r.Context(), "create product", "error", err)
+		h.log.WarnContext(r.Context(), "create product", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		h.log.ErrorContext(r.Context(), "create product", "error", err)
+		h.log.WarnContext(r.Context(), "create product", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid product payload")
 		return
 	}
@@ -122,7 +122,7 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	createdProduct, err := h.srv.CreateProduct(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ErrExistingProductName) {
-			h.log.ErrorContext(r.Context(), "create product", "error", err)
+			h.log.WarnContext(r.Context(), "create product", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
 			return
 		}
@@ -137,20 +137,20 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	productID, err := parseProductID(r)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "update product", "error", err)
+		h.log.WarnContext(r.Context(), "update product", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
 	var req UpdateProductRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.ErrorContext(r.Context(), "update product", "error", err)
+		h.log.WarnContext(r.Context(), "update product", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		h.log.ErrorContext(r.Context(), "update product", "error", err)
+		h.log.WarnContext(r.Context(), "update product", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid product payload")
 		return
 	}
@@ -158,12 +158,12 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	updatedProduct, err := h.srv.UpdateProduct(r.Context(), productID, req)
 	if err != nil {
 		if errors.Is(err, ErrProductNotFound) {
-			h.log.ErrorContext(r.Context(), "update product", "error", err)
+			h.log.WarnContext(r.Context(), "update product", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
 		if errors.Is(err, ErrExistingProductName) {
-			h.log.ErrorContext(r.Context(), "update product", "error", err)
+			h.log.WarnContext(r.Context(), "update product", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
 			return
 		}
@@ -178,14 +178,14 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	productID, err := parseProductID(r)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "delete product", "error", err)
+		h.log.WarnContext(r.Context(), "delete product", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
 	if err := h.srv.DeleteProduct(r.Context(), productID); err != nil {
 		if errors.Is(err, ErrProductNotFound) {
-			h.log.ErrorContext(r.Context(), "delete product", "error", err)
+			h.log.WarnContext(r.Context(), "delete product", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}

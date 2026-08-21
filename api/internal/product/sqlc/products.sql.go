@@ -22,10 +22,10 @@ RETURNING id, name, description, price, stock, created_at, updated_at
 `
 
 type CreateProductParams struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Price       pgtype.Numeric `json:"price"`
-	Stock       int32          `json:"stock"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Price       int64  `json:"price"`
+	Stock       int32  `json:"stock"`
 }
 
 func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
@@ -153,11 +153,11 @@ RETURNING id, name, description, price, stock, created_at, updated_at
 `
 
 type UpdateProductParams struct {
-	Name        pgtype.Text    `json:"name"`
-	Description pgtype.Text    `json:"description"`
-	Price       pgtype.Numeric `json:"price"`
-	Stock       pgtype.Int4    `json:"stock"`
-	ID          pgtype.UUID    `json:"id"`
+	Name        pgtype.Text `json:"name"`
+	Description pgtype.Text `json:"description"`
+	Price       pgtype.Int8 `json:"price"`
+	Stock       pgtype.Int4 `json:"stock"`
+	ID          pgtype.UUID `json:"id"`
 }
 
 func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {

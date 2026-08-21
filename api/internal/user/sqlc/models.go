@@ -8,6 +8,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type IdempotencyKey struct {
+	Key         string             `json:"key"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	RequestHash string             `json:"request_hash"`
+	Response    []byte             `json:"response"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Order struct {
+	ID          pgtype.UUID        `json:"id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	Status      string             `json:"status"`
+	TotalAmount int64              `json:"total_amount"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type OrderItem struct {
+	ID        pgtype.UUID        `json:"id"`
+	OrderID   pgtype.UUID        `json:"order_id"`
+	ProductID pgtype.UUID        `json:"product_id"`
+	Quantity  int32              `json:"quantity"`
+	Price     int64              `json:"price"`
+	Subtotal  int64              `json:"subtotal"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Payment struct {
+	ID            pgtype.UUID        `json:"id"`
+	OrderID       pgtype.UUID        `json:"order_id"`
+	Amount        int64              `json:"amount"`
+	Status        string             `json:"status"`
+	Provider      string             `json:"provider"`
+	TransactionID pgtype.Text        `json:"transaction_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Product struct {
+	ID          pgtype.UUID        `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Price       int64              `json:"price"`
+	Stock       int32              `json:"stock"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID           pgtype.UUID        `json:"id"`
 	Email        string             `json:"email"`

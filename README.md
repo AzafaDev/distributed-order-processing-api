@@ -9,6 +9,7 @@ A Go backend for order processing built around one core idea: **correctness unde
 - **Idempotency-Key middleware** — clients can safely retry `POST /api/orders/` after a timeout. Requests are deduplicated by key + SHA-256 body hash, in-flight requests are protected from being replayed twice, and stale in-flight keys (>30s) can be reclaimed instead of blocking forever.
 - **Idempotent payment flow** — a fake payment provider simulates real-world flakiness (80% success rate). Retrying a payment never double-charges: an already-paid order or already-successful payment short-circuits and returns the existing result.
 - **Price snapshotting** — `order_items` stores the price at time of purchase instead of joining live product prices, so historical orders remain accurate even after a product's price changes.
+- **Money as integers** — prices are integer minor units end to end (`BIGINT` in every table, `int` in Go). No float ever touches a monetary value, so no amount can be silently rounded on its way to a total.
 
 ## Architecture
 
@@ -48,6 +49,7 @@ Redis is wired into the app (client setup, `/readyz` health check, exercised in 
 - **Auth**: JWT ([golang-jwt](https://github.com/golang-jwt/jwt)) with explicit algorithm-confusion protection, bcrypt password hashing
 - **Validation**: [go-playground/validator](https://github.com/go-playground/validator)
 - **Migrations**: [golang-migrate](https://github.com/golang-migrate/migrate)
+- **Observability**: [OpenTelemetry](https://opentelemetry.io/) tracing exported to [Jaeger](https://www.jaegertracing.io/), [Prometheus](https://prometheus.io/) metrics, [Grafana](https://grafana.com/) dashboard
 - **Testing**: [testify](https://github.com/stretchr/testify), [Testcontainers](https://testcontainers.com/) (real Postgres + Redis in integration tests)
 - **CI**: GitHub Actions
 - **Containerization**: Docker (multi-stage build, non-root runtime user)
@@ -100,6 +102,30 @@ Expected:
   final stock = 0
   exactly 10 order rows created
 ```
+
+## Observability
+
+Traces, metrics, and logs are wired together rather than bolted on separately.
+
+**Tracing** — every request is traced end to end via OpenTelemetry: HTTP handler, SQL statements (named after the sqlc query, so spans read `CreateOrder` rather than a SQL blob), Redis commands, and explicit spans around the order transaction and its row locks. Traces are exported to Jaeger over OTLP. Business refusals such as "insufficient stock" are recorded as span *attributes*, not span errors, so alerting on span errors keeps meaning something.
+
+**Log correlation** — the slog handler pulls `trace_id` off the active span into every log line, so a log entry leads straight to its trace.
+
+**Metrics** — a Prometheus endpoint exposes request rate, latency histogram, error counts split into 4xx/5xx, in-flight requests, and pgx connection pool statistics. Metrics are labelled by **chi route pattern**, never raw URL: `/api/orders/{id}` is one time series no matter how many order IDs exist, and unmatched paths collapse into a single `unmatched` series so scanner traffic cannot blow up Prometheus' memory.
+
+The metrics endpoint listens on its own port (`METRICS_PORT`, default `9100`) rather than on the API port. Scrapes therefore skip the public router's tracing, auth, and rate limiting, and the endpoint is not exposed alongside the API.
+
+Start the observability stack with the `full` profile and open:
+
+| Service    | URL                       | Notes                                        |
+|------------|---------------------------|----------------------------------------------|
+| Grafana    | `http://localhost:3001`   | Dashboard "Order API"; anonymous auth, local only |
+| Prometheus | `http://localhost:9090`   | Check Status → Targets to confirm scraping   |
+| Jaeger     | `http://localhost:16686`  | Trace search                                 |
+
+Grafana's datasource and dashboard are provisioned from `deploy/grafana/`, so they are versioned in the repo instead of living only inside a container. The dashboard covers RPS by route, error rate, latency P50/P95/P99, P99 per route, connection pool usage, and pool saturation.
+
+> Grafana is published on host port 3001 because 3000 collides with most other local dev servers. Override with `GRAFANA_PORT`.
 
 ## Getting Started
 
@@ -160,7 +186,9 @@ curl localhost:8080/readyz    # {"success":true,"data":{"db":"up","redis":"up"}}
 
 ### Environment variables
 
-Required: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRY`, `PORT` (default `8080`), `REDIS_HOST`, `REDIS_PORT`, plus `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` for Docker Compose. `POSTGRES_PORT` and `REDIS_PORT` control the ports published to your host; container-to-container traffic always uses 5432 and 6379.
+Required: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRY`, `PORT` (default `8080`), `REDIS_HOST`, `REDIS_PORT`, plus `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` for Docker Compose.
+
+Observability is configured by `METRICS_PORT` (default `9100`), `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_SAMPLE_RATIO`, and the host ports `PROMETHEUS_PORT` / `GRAFANA_PORT`. Tracing is optional at runtime: if the exporter cannot be reached the app logs a warning and serves traffic without it. `POSTGRES_PORT` and `REDIS_PORT` control the ports published to your host; container-to-container traffic always uses 5432 and 6379.
 
 `.env` is optional at runtime — if the file is absent the app reads configuration straight from the process environment, which is how the containerized profile works.
 
@@ -189,9 +217,10 @@ api/
 │   ├── idempotency/           # idempotency key store
 │   ├── health/                 # liveness/readiness
 │   ├── server/                  # router + app wiring
-│   └── platform/                 # config, database, redis, auth, logger, middleware
-├── migrations/             # SQL migrations (golang-migrate)
-└── test/integration/        # Testcontainers-based end-to-end tests
+│   └── platform/                 # config, database, auth, logger, tracing, metrics, middleware
+├── deploy/                 # Prometheus config, provisioned Grafana dashboards
+├── migrations/              # SQL migrations (golang-migrate)
+└── test/integration/         # Testcontainers-based end-to-end tests
 ```
 
 ## Roadmap
@@ -201,5 +230,5 @@ This is intentionally a modular monolith today. The plan is to evolve it in stag
 1. **Modular Monolith** *(current)* — single Go service, clean domain boundaries.
 2. **gRPC** — split order/inventory concerns into internal services.
 3. **Event-driven** — introduce Kafka for order → payment/inventory/notification fan-out.
-4. **Observability** — OpenTelemetry metrics, traces, and structured logs (Prometheus, Grafana, Jaeger).
+4. **Observability** *(done)* — OpenTelemetry traces, Prometheus metrics, and trace-correlated structured logs (Prometheus, Grafana, Jaeger).
 5. **Load testing** — k6-driven load tests at 1000+ concurrent users, tracking P50/P95/P99 latency and error rate.
