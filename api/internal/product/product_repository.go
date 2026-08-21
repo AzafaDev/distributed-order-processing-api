@@ -3,7 +3,6 @@ package product
 import (
 	"context"
 	"errors"
-	"math/big"
 
 	"github.com/AzafaDev/distributed-order-processing-api/internal/product/sqlc"
 	"github.com/google/uuid"
@@ -40,16 +39,11 @@ func (r *ProductRepository) GetProductByID(ctx context.Context, id uuid.UUID) (*
 		return nil, err
 	}
 
-	numeric, err := product.Price.Int64Value()
-	if err != nil {
-		return nil, err
-	}
-
 	return &Product{
 		ID:          product.ID.Bytes,
 		Name:        product.Name,
 		Description: product.Description,
-		Price:       int(numeric.Int64),
+		Price:       int(product.Price),
 		Stock:       int(product.Stock),
 		CreatedAt:   product.CreatedAt.Time,
 		UpdatedAt:   product.UpdatedAt.Time,
@@ -65,16 +59,11 @@ func (r *ProductRepository) ListProducts(ctx context.Context, limit, offset int)
 	}
 	var products []Product
 	for _, eachProduct := range sqlcProducts {
-		numeric, err := eachProduct.Price.Int64Value()
-		if err != nil {
-			return []Product{}, err
-		}
-
 		product := Product{
 			ID:          eachProduct.ID.Bytes,
 			Name:        eachProduct.Name,
 			Description: eachProduct.Description,
-			Price:       int(numeric.Int64),
+			Price:       int(eachProduct.Price),
 			Stock:       int(eachProduct.Stock),
 			CreatedAt:   eachProduct.CreatedAt.Time,
 			UpdatedAt:   eachProduct.UpdatedAt.Time,
@@ -89,11 +78,8 @@ func (r *ProductRepository) CreateProduct(ctx context.Context, name, desc string
 	createdProduct, err := r.queries.CreateProduct(ctx, sqlc.CreateProductParams{
 		Name:        name,
 		Description: desc,
-		Price: pgtype.Numeric{
-			Int:   big.NewInt(int64(price)),
-			Valid: true,
-		},
-		Stock: int32(stock),
+		Price:       int64(price),
+		Stock:       int32(stock),
 	})
 
 	var pgErr *pgconn.PgError
@@ -105,16 +91,11 @@ func (r *ProductRepository) CreateProduct(ctx context.Context, name, desc string
 		return nil, err
 	}
 
-	convertedPrice, err := createdProduct.Price.Int64Value()
-	if err != nil {
-		return nil, err
-	}
-
 	return &Product{
 		ID:          createdProduct.ID.Bytes,
 		Name:        createdProduct.Name,
 		Description: createdProduct.Description,
-		Price:       int(convertedPrice.Int64),
+		Price:       int(createdProduct.Price),
 		Stock:       int(createdProduct.Stock),
 		CreatedAt:   createdProduct.CreatedAt.Time,
 		UpdatedAt:   createdProduct.UpdatedAt.Time,
@@ -132,9 +113,9 @@ func (r *ProductRepository) UpdateProduct(ctx context.Context, id uuid.UUID, nam
 		descParam = pgtype.Text{String: *desc, Valid: true}
 	}
 
-	priceParam := pgtype.Numeric{}
+	priceParam := pgtype.Int8{}
 	if price != nil {
-		priceParam = pgtype.Numeric{Int: big.NewInt(int64(*price)), Valid: true}
+		priceParam = pgtype.Int8{Int64: int64(*price), Valid: true}
 	}
 
 	stockParam := pgtype.Int4{}
@@ -161,16 +142,11 @@ func (r *ProductRepository) UpdateProduct(ctx context.Context, id uuid.UUID, nam
 		return nil, err
 	}
 
-	convertedPrice, err := updatedProduct.Price.Int64Value()
-	if err != nil {
-		return nil, err
-	}
-
 	return &Product{
 		ID:          updatedProduct.ID.Bytes,
 		Name:        updatedProduct.Name,
 		Description: updatedProduct.Description,
-		Price:       int(convertedPrice.Int64),
+		Price:       int(updatedProduct.Price),
 		Stock:       int(updatedProduct.Stock),
 		CreatedAt:   updatedProduct.CreatedAt.Time,
 		UpdatedAt:   updatedProduct.UpdatedAt.Time,
