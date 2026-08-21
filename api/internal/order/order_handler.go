@@ -53,20 +53,20 @@ func (h *OrderHandler) RegisterRoutes(r chi.Router) {
 func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	var req CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.ErrorContext(r.Context(), "create order", "error", err)
+		h.log.WarnContext(r.Context(), "create order", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.v.Struct(req); err != nil {
-		h.log.ErrorContext(r.Context(), "create order", "error", err)
+		h.log.WarnContext(r.Context(), "create order", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "create order", "error", err)
+		h.log.WarnContext(r.Context(), "create order", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -81,19 +81,19 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	createdOrder, createdOrderItems, createdPayment, err := h.s.CreateOrder(r.Context(), userID, req)
 	if err != nil {
 		if errors.Is(err, product.ErrProductNotFound) {
-			h.log.ErrorContext(r.Context(), "create order", "error", err)
+			h.log.WarnContext(r.Context(), "create order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		if errors.Is(err, product.ErrInsufficientStock) {
-			h.log.ErrorContext(r.Context(), "create order", "error", err)
+			h.log.WarnContext(r.Context(), "create order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
 			return
 		}
 
 		if errors.Is(err, ErrOrderNotFound) {
-			h.log.ErrorContext(r.Context(), "create order", "error", err)
+			h.log.WarnContext(r.Context(), "create order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -123,7 +123,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "get orders", "error", err)
+		h.log.WarnContext(r.Context(), "get orders", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -141,21 +141,21 @@ func (h *OrderHandler) GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	orderIDStr := chi.URLParam(r, "id")
 	orderID, err := uuid.Parse(orderIDStr)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "get order by id", "error", err)
+		h.log.WarnContext(r.Context(), "get order by id", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "get order by id", "error", err)
+		h.log.WarnContext(r.Context(), "get order by id", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	order, err := h.s.GetOrderByID(r.Context(), userID, orderID)
 	if err != nil {
 		if errors.Is(err, ErrOrderNotFound) {
-			h.log.ErrorContext(r.Context(), "get order by id", "error", err)
+			h.log.WarnContext(r.Context(), "get order by id", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -171,14 +171,14 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	orderIDStr := chi.URLParam(r, "id")
 	orderID, err := uuid.Parse(orderIDStr)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "cancel order", "error", err)
+		h.log.WarnContext(r.Context(), "cancel order", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "cancel order", "error", err)
+		h.log.WarnContext(r.Context(), "cancel order", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -186,19 +186,19 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	cancelledOrder, err := h.s.CancelOrder(r.Context(), userID, orderID)
 	if err != nil {
 		if errors.Is(err, ErrOrderNotFound) {
-			h.log.ErrorContext(r.Context(), "cancel order", "error", err)
+			h.log.WarnContext(r.Context(), "cancel order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		if errors.Is(err, ErrOrderNotPending) {
-			h.log.ErrorContext(r.Context(), "cancel order", "error", err)
+			h.log.WarnContext(r.Context(), "cancel order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
 			return
 		}
 
 		if errors.Is(err, ErrOrderItemsUnvailable) {
-			h.log.ErrorContext(r.Context(), "cancel order", "error", err)
+			h.log.WarnContext(r.Context(), "cancel order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
@@ -206,7 +206,7 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		// Restoring stock cannot fail on stock; it can only fail if the
 		// product row is gone.
 		if errors.Is(err, product.ErrProductNotFound) {
-			h.log.ErrorContext(r.Context(), "cancel order", "error", err)
+			h.log.WarnContext(r.Context(), "cancel order", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}

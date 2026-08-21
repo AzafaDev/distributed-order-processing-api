@@ -40,7 +40,7 @@ func (h *PaymentHandler) RegisterRoutes(r chi.Router) {
 func (h *PaymentHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "pay", "error", err)
+		h.log.WarnContext(r.Context(), "pay", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -48,7 +48,7 @@ func (h *PaymentHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	orderIDStr := chi.URLParam(r, "id")
 	orderID, err := uuid.Parse(orderIDStr)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "pay", "error", err)
+		h.log.WarnContext(r.Context(), "pay", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "id format is invalid")
 		return
 	}
@@ -56,19 +56,19 @@ func (h *PaymentHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	payment, order, err := h.serv.Pay(r.Context(), userID, orderID)
 	if err != nil {
 		if errors.Is(err, ErrNoOrderFound) {
-			h.log.ErrorContext(r.Context(), "pay", "error", err)
+			h.log.WarnContext(r.Context(), "pay", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		if errors.Is(err, ErrNoPaymentFound) {
-			h.log.ErrorContext(r.Context(), "pay", "error", err)
+			h.log.WarnContext(r.Context(), "pay", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}
 
 		if errors.Is(err, ErrOrderNotPayable) {
-			h.log.ErrorContext(r.Context(), "pay", "error", err)
+			h.log.WarnContext(r.Context(), "pay", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, err.Error())
 			return
 		}
@@ -87,7 +87,7 @@ func (h *PaymentHandler) Pay(w http.ResponseWriter, r *http.Request) {
 func (h *PaymentHandler) GetPaymentByOrderID(w http.ResponseWriter, r *http.Request) {
 	userID, err := middleware.GetUserIDClaims(r.Context())
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "get payment by order id", "error", err)
+		h.log.WarnContext(r.Context(), "get payment by order id", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -95,7 +95,7 @@ func (h *PaymentHandler) GetPaymentByOrderID(w http.ResponseWriter, r *http.Requ
 	orderIDStr := chi.URLParam(r, "id")
 	orderID, err := uuid.Parse(orderIDStr)
 	if err != nil {
-		h.log.ErrorContext(r.Context(), "get payment by order id", "error", err)
+		h.log.WarnContext(r.Context(), "get payment by order id", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "id format is invalid")
 		return
 	}
@@ -103,7 +103,7 @@ func (h *PaymentHandler) GetPaymentByOrderID(w http.ResponseWriter, r *http.Requ
 	payment, err := h.serv.GetPaymentByOrderID(r.Context(), userID, orderID)
 	if err != nil {
 		if errors.Is(err, ErrNoPaymentFound) {
-			h.log.ErrorContext(r.Context(), "get payment by order id", "error", err)
+			h.log.WarnContext(r.Context(), "get payment by order id", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusNotFound, err.Error())
 			return
 		}

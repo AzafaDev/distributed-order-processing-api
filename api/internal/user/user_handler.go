@@ -55,13 +55,13 @@ func (h *UserHandler) RegisterRoutes(r chi.Router) {
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.ErrorContext(r.Context(), "register", "error", err)
+		h.log.WarnContext(r.Context(), "register", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		h.log.ErrorContext(r.Context(), "register", "error", err)
+		h.log.WarnContext(r.Context(), "register", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid email or password format")
 		return
 	}
@@ -69,7 +69,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	createdUser, err := h.srv.Register(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ErrEmailRegistered) {
-			h.log.ErrorContext(r.Context(), "register", "error", err)
+			h.log.WarnContext(r.Context(), "register", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusConflict, ErrEmailRegistered.Error())
 			return
 		}
@@ -83,13 +83,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.ErrorContext(r.Context(), "login", "error", err)
+		h.log.WarnContext(r.Context(), "login", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		h.log.ErrorContext(r.Context(), "login", "error", err)
+		h.log.WarnContext(r.Context(), "login", "error", err)
 		httpx.WriteErrorJSON(w, http.StatusBadRequest, "invalid email or password")
 		return
 	}
@@ -100,7 +100,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, ErrLoginGeneric) {
 			h.recordLoginFailure(r.Context(), rlKey)
-			h.log.ErrorContext(r.Context(), "login", "error", err)
+			h.log.WarnContext(r.Context(), "login", "error", err)
 			httpx.WriteErrorJSON(w, http.StatusUnauthorized, err.Error())
 			return
 		}
